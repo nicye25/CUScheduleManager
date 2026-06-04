@@ -25,6 +25,8 @@ def schedule_combinations():
     course_numbers = payload.get("course_numbers", payload.get("course_codes"))
     limit = payload.get("limit")
     include_ascii = bool(payload.get("include_ascii", False))
+    requirements = extract_requirements(payload)
+    target_course_count = extract_target_course_count(payload)
 
     try:
         validated_course_numbers = validate_course_numbers(course_numbers)
@@ -33,6 +35,8 @@ def schedule_combinations():
             validated_course_numbers,
             load_course_rows(),
             limit=validated_limit,
+            requirements=requirements,
+            target_course_count=target_course_count,
         )
     except (ScheduleGenerationError, ValueError) as error:
         return jsonify({"error": str(error)}), 400
@@ -74,6 +78,23 @@ def validate_limit(value: object) -> int | None:
     return value
 
 
+def extract_requirements(payload: dict[str, object]) -> object:
+    requirements = payload.get("requirements")
+    if requirements is not None:
+        return requirements
+    return {
+        "no_class_before": payload.get("no_class_before"),
+        "no_class_after": payload.get("no_class_after"),
+    }
+
+
+def extract_target_course_count(payload: dict[str, object]) -> object:
+    for field_name in ("target_course_count", "take_exactly", "exact_course_count"):
+        if field_name in payload:
+            return payload[field_name]
+    return None
+
+
 VISUALIZER_TEMPLATE = r"""
 <!doctype html>
 <html lang="en">
@@ -101,7 +122,7 @@ VISUALIZER_TEMPLATE = r"""
         }
         form {
             display: grid;
-            grid-template-columns: minmax(280px, 1fr) 140px;
+            grid-template-columns: minmax(280px, 1fr) 120px 150px 150px 140px;
             align-items: end;
             gap: 12px;
             padding: 16px;
@@ -293,6 +314,18 @@ VISUALIZER_TEMPLATE = r"""
                 <textarea id="course-codes" spellcheck="false">AFAS UN1001
 AMST UN3930</textarea>
             </label>
+            <label>
+                Take exactly
+                <input id="target-course-count" type="number" min="1" max="10" placeholder="all">
+            </label>
+            <label>
+                No class before
+                <input id="no-class-before" type="text" placeholder="10am">
+            </label>
+            <label>
+                No class after
+                <input id="no-class-after" type="text" placeholder="5pm">
+            </label>
             <button type="submit">Generate</button>
         </form>
         <div class="api-note">This page calls POST /api/schedules/combinations and renders that response.</div>
@@ -313,9 +346,14 @@ AMST UN3930</textarea>
         ];
         const dayIndex = new Map(dayColumns.map(([day], index) => [day, index]));
         const courseColors = ["#2f6fed", "#0f8f76", "#c45a10", "#7a4cc2", "#b5365b", "#2d7d2d", "#7a5f11", "#1f7899"];
+        const standardViewStart = 8 * 60;
+        const standardViewEnd = 22 * 60;
 
         const form = document.querySelector("#schedule-form");
         const courseCodesInput = document.querySelector("#course-codes");
+        const targetCourseCountInput = document.querySelector("#target-course-count");
+        const noClassBeforeInput = document.querySelector("#no-class-before");
+        const noClassAfterInput = document.querySelector("#no-class-after");
         const message = document.querySelector("#message");
         const results = document.querySelector("#results");
 
@@ -332,10 +370,19 @@ AMST UN3930</textarea>
             results.replaceChildren();
 
             try {
+                const requestBody = { course_numbers: courseNumbers };
+                const targetCourseCount = parseTargetCourseCount();
+                if (targetCourseCount !== null) {
+                    requestBody.target_course_count = targetCourseCount;
+                }
+                const requirements = buildRequirements();
+                if (Object.keys(requirements).length > 0) {
+                    requestBody.requirements = requirements;
+                }
                 const response = await fetch("/api/schedules/combinations", {
                     method: "POST",
                     headers: { "Content-Type": "application/json" },
-                    body: JSON.stringify({ course_numbers: courseNumbers }),
+                    body: JSON.stringify(requestBody),
                 });
                 const data = await response.json();
                 if (!response.ok) {
@@ -356,12 +403,44 @@ AMST UN3930</textarea>
                 .filter(Boolean);
         }
 
+        function buildRequirements() {
+            const requirements = {};
+            const noClassBefore = noClassBeforeInput.value.trim();
+            const noClassAfter = noClassAfterInput.value.trim();
+            if (noClassBefore) {
+                requirements.no_class_before = noClassBefore;
+            }
+            if (noClassAfter) {
+                requirements.no_class_after = noClassAfter;
+            }
+            return requirements;
+        }
+
+        function parseTargetCourseCount() {
+            const value = targetCourseCountInput.value.trim();
+            if (!value) {
+                return null;
+            }
+            return Number(value);
+        }
+
         function renderResult(data) {
             const missingCourses = Array.isArray(data.missing_course_numbers) ? data.missing_course_numbers : [];
             const summary = document.createElement("div");
             summary.className = "summary";
             summary.append(makeSummaryItem(data.total_valid_combinations || 0, "valid combinations"));
             summary.append(makeSummaryItem((data.combinations || []).length, "rendered"));
+            if (data.target_course_count) {
+                const targetItem = document.createElement("span");
+                targetItem.innerHTML = `<strong>Taking:</strong> ${data.target_course_count} of ${data.matched_course_count}`;
+                summary.append(targetItem);
+            }
+            const requirementText = formatRequirements(data.requirements || {});
+            if (requirementText) {
+                const requirementItem = document.createElement("span");
+                requirementItem.innerHTML = `<strong>Requirements:</strong> ${requirementText}`;
+                summary.append(requirementItem);
+            }
             if (missingCourses.length > 0) {
                 const missing = document.createElement("span");
                 missing.innerHTML = `<strong>Missing:</strong> ${missingCourses.join(", ")}`;
@@ -375,8 +454,9 @@ AMST UN3930</textarea>
             }
 
             const fragment = document.createDocumentFragment();
+            const scheduleRange = buildScheduleRange(data.combinations);
             data.combinations.forEach((combination) => {
-                fragment.append(renderCombination(combination));
+                fragment.append(renderCombination(combination, scheduleRange));
             });
             results.replaceChildren(fragment);
         }
@@ -387,8 +467,19 @@ AMST UN3930</textarea>
             return item;
         }
 
-        function renderCombination(combination) {
-            const schedule = buildVisualSchedule(combination);
+        function formatRequirements(requirements) {
+            const parts = [];
+            if (requirements.no_class_before) {
+                parts.push(`no class before ${requirements.no_class_before}`);
+            }
+            if (requirements.no_class_after) {
+                parts.push(`no class after ${requirements.no_class_after}`);
+            }
+            return parts.join(", ");
+        }
+
+        function renderCombination(combination, scheduleRange) {
+            const schedule = buildVisualSchedule(combination, scheduleRange);
             const article = document.createElement("article");
             article.className = "combination";
 
@@ -480,7 +571,7 @@ AMST UN3930</textarea>
             return element;
         }
 
-        function buildVisualSchedule(combination) {
+        function buildVisualSchedule(combination, scheduleRange) {
             const sections = Array.isArray(combination.sections) ? combination.sections : [];
             const blocks = [];
             const unscheduled = [];
@@ -493,15 +584,8 @@ AMST UN3930</textarea>
                 }
             });
 
-            let viewStart = 8 * 60;
-            let viewEnd = 18 * 60;
-            if (blocks.length > 0) {
-                viewStart = Math.floor(Math.min(...blocks.map((block) => block.startMinutes)) / 60) * 60;
-                viewEnd = Math.ceil(Math.max(...blocks.map((block) => block.endMinutes)) / 60) * 60;
-            }
-            if (viewEnd <= viewStart) {
-                viewEnd = viewStart + 60;
-            }
+            const viewStart = scheduleRange.viewStart;
+            const viewEnd = scheduleRange.viewEnd;
 
             const visibleMinutes = viewEnd - viewStart;
             blocks.forEach((block) => {
@@ -515,6 +599,32 @@ AMST UN3930</textarea>
                 blocks,
                 unscheduled,
             };
+        }
+
+        function buildScheduleRange(combinations) {
+            let viewStart = standardViewStart;
+            let viewEnd = standardViewEnd;
+            if (!Array.isArray(combinations)) {
+                return { viewStart, viewEnd };
+            }
+
+            combinations.forEach((combination) => {
+                const sections = Array.isArray(combination.sections) ? combination.sections : [];
+                sections.forEach((section) => {
+                    const startMinutes = parseTimeToMinutes(section.start_time);
+                    const endMinutes = parseTimeToMinutes(section.end_time);
+                    if (startMinutes === null || endMinutes === null || startMinutes >= endMinutes) {
+                        return;
+                    }
+                    viewStart = Math.min(viewStart, Math.floor(startMinutes / 60) * 60);
+                    viewEnd = Math.max(viewEnd, Math.ceil(endMinutes / 60) * 60);
+                });
+            });
+
+            if (viewEnd <= viewStart) {
+                viewEnd = viewStart + 60;
+            }
+            return { viewStart, viewEnd };
         }
 
         function buildSectionBlocks(section) {

@@ -21,6 +21,7 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("course_numbers", nargs="+", help="Course numbers/codes, such as 'COMS W3137'.")
     parser.add_argument("--data", type=Path, default=DEFAULT_COURSE_DATA_PATH, help="Course JSON data path.")
     parser.add_argument("--limit", type=positive_int, default=3, help="Number of valid schedules to render.")
+    parser.add_argument("--take-exactly", type=positive_int, dest="target_course_count", help="Number of requested courses to include in each schedule.")
     return parser.parse_args(argv)
 
 
@@ -31,12 +32,15 @@ def main(argv: Iterable[str] | None = None) -> int:
             args.course_numbers,
             load_course_rows(args.data),
             limit=args.limit,
+            target_course_count=args.target_course_count,
         )
     except ScheduleGenerationError as error:
         print(f"Error: {error}")
         return 1
 
     print(f"Requested courses: {', '.join(args.course_numbers)}")
+    if result["target_course_count"]:
+        print(f"Taking exactly: {result['target_course_count']} course(s)")
     if result["missing_course_numbers"]:
         print(f"Missing courses: {', '.join(result['missing_course_numbers'])}")
     print(f"Total valid combinations: {result['total_valid_combinations']}")

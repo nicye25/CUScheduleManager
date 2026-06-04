@@ -56,10 +56,10 @@ Generate non-conflicting schedule combinations for up to 10 course numbers:
 ```bash
 curl -X POST http://127.0.0.1:5001/api/schedules/combinations \
 	-H "Content-Type: application/json" \
-	-d '{"course_numbers":["COMS W3137","COMS W3157"],"limit":3,"include_ascii":true}'
+	-d '{"course_numbers":["COMS W3137","COMS W3157","MATH UN1101"],"target_course_count":2,"requirements":{"no_class_before":"10am","no_class_after":"5pm"},"limit":3,"include_ascii":true}'
 ```
 
-The endpoint returns `total_valid_combinations` for all possible valid schedules and only includes the first `limit` combinations in the response when `limit` is provided. Each returned section is compact: `course_code`, `section`, `days`, `start_time`, `end_time`, and `call_number`.
+The endpoint returns `total_valid_combinations` for all possible valid schedules and only includes the first `limit` combinations in the response when `limit` is provided. Optional `target_course_count` tells the generator to choose exactly that many courses from the requested course list. Optional requirements currently support `no_class_before` and `no_class_after` time strings such as `10am` or `5:30pm`. Each returned section is compact: `course_code`, `section`, `days`, `start_time`, `end_time`, and `call_number`.
 
 Open the browser test UI:
 
@@ -67,12 +67,12 @@ Open the browser test UI:
 http://127.0.0.1:5001/api/schedules/visualizer
 ```
 
-It uses exact course codes, calls `POST /api/schedules/combinations` from the browser, and renders every returned combination as a day/time schedule with blocks.
+It uses exact course codes, optional exact-course-count and no-class-before/after requirements, calls `POST /api/schedules/combinations` from the browser, and renders every returned combination as a day/time schedule with blocks.
 
 ## Preview Schedules in the Terminal
 
 ```bash
-PYTHONPATH=backend .venv/bin/python backend/scripts/preview_schedule_combinations.py "COMS W3137" "COMS W3157" --limit 3
+PYTHONPATH=backend .venv/bin/python backend/scripts/preview_schedule_combinations.py "COMS W3137" "COMS W3157" "MATH UN1101" --take-exactly 2 --limit 3
 ```
 
 Unscheduled/TBA sections are included in combinations and treated as non-conflicting for now.
