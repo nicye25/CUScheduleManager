@@ -3,7 +3,6 @@ __pycache__/
 *.py[cod]
 .venv/
 venv/
-backend/data/*.json
 backend/data/*.sqlite
 backend/data/*.sqlite3
 backend/data/*.db

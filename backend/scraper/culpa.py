@@ -9,6 +9,7 @@ import sys
 import time
 import unicodedata
 from collections import defaultdict
+from concurrent.futures import ThreadPoolExecutor, as_completed
 from dataclasses import dataclass
 from datetime import datetime, timezone
 from pathlib import Path
@@ -157,10 +158,6 @@ class CulpaScraper:
         latest_review_date: str | None = None
 
         for review in reviews:
-            review_id = review.get("review_id")
-            if not isinstance(review_id, int):
-                continue
-
             rating = review.get("rating")
             normalized_rating = rating if isinstance(rating, int) and 1 <= rating <= 5 else None
             if isinstance(rating, int) and 1 <= rating <= 5:
@@ -174,6 +171,10 @@ class CulpaScraper:
             submission_date = review.get("submission_date")
             if isinstance(submission_date, str) and (latest_review_date is None or submission_date > latest_review_date):
                 latest_review_date = submission_date
+
+            review_id = review.get("review_id")
+            if not isinstance(review_id, int):
+                continue
 
             course_header = review.get("course_header") or {}
             review_ratings.append(
@@ -230,7 +231,7 @@ class CulpaScraper:
                 if attempt >= self.max_retries:
                     raise
 
-                wait_seconds = 1.0 * (2**attempt)
+                wait_seconds = retry_wait_seconds(error, attempt)
                 print(f"CULPA request failed for {url}: {error}. Retrying in {wait_seconds:.1f}s.", file=sys.stderr)
                 time.sleep(wait_seconds)
 
@@ -251,6 +252,20 @@ def load_course_professor_names(course_input: Path) -> dict[str, set[str]]:
                 names_by_normalized_name[normalized_name].add(name)
 
     return names_by_normalized_name
+
+
+def retry_wait_seconds(error: Exception, attempt: int) -> float:
+    response = getattr(error, "response", None)
+    if response is not None and getattr(response, "status_code", None) == 429:
+        retry_after = response.headers.get("retry-after")
+        if retry_after:
+            try:
+                return float(retry_after)
+            except ValueError:
+                pass
+        return 10.0 * (attempt + 1)
+
+    return 1.0 * (2**attempt)
 
 
 def split_professor_names(prof_name: str) -> list[str]:
@@ -294,27 +309,55 @@ def write_sqlite_database(
     review_ratings: list[ProfessorReviewRating],
     unmatched_names: dict[str, set[str]],
 ) -> None:
-    output_db.parent.mkdir(parents=True, exist_ok=True)
+    initialize_sqlite_database(output_db, departments, unmatched_names, reset=True)
     scraped_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with sqlite3.connect(output_db) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        review_ratings_by_professor: dict[int, list[ProfessorReviewRating]] = defaultdict(list)
+        for review_rating in review_ratings:
+            review_ratings_by_professor[review_rating.professor_id].append(review_rating)
+
+        for professor_id, professor in professors.items():
+            write_professor_rating(
+                connection,
+                professor,
+                rating_summaries[professor_id],
+                review_ratings_by_professor[professor_id],
+                scraped_at,
+            )
+
+
+def initialize_sqlite_database(
+    output_db: Path,
+    departments: list[Department],
+    unmatched_names: dict[str, set[str]],
+    reset: bool,
+) -> None:
+    output_db.parent.mkdir(parents=True, exist_ok=True)
 
     with sqlite3.connect(output_db) as connection:
         connection.execute("PRAGMA foreign_keys = ON")
+        if reset:
+            connection.executescript(
+                """
+                DROP TABLE IF EXISTS unmatched_course_professors;
+                DROP TABLE IF EXISTS professor_course_rating_summaries;
+                DROP TABLE IF EXISTS professor_reviews;
+                DROP TABLE IF EXISTS professor_departments;
+                DROP TABLE IF EXISTS professors;
+                DROP TABLE IF EXISTS departments;
+                """
+            )
+
         connection.executescript(
             """
-            DROP TABLE IF EXISTS unmatched_course_professors;
-            DROP TABLE IF EXISTS professor_course_rating_summaries;
-            DROP TABLE IF EXISTS professor_reviews;
-            DROP TABLE IF EXISTS professor_departments;
-            DROP TABLE IF EXISTS professors;
-            DROP TABLE IF EXISTS departments;
-
-            CREATE TABLE departments (
+            CREATE TABLE IF NOT EXISTS departments (
                 department_id INTEGER PRIMARY KEY,
                 department_code TEXT,
                 name TEXT NOT NULL
             );
 
-            CREATE TABLE professors (
+            CREATE TABLE IF NOT EXISTS professors (
                 professor_id INTEGER PRIMARY KEY,
                 first_name TEXT,
                 last_name TEXT,
@@ -338,7 +381,7 @@ def write_sqlite_database(
                 scraped_at TEXT NOT NULL
             );
 
-            CREATE TABLE professor_departments (
+            CREATE TABLE IF NOT EXISTS professor_departments (
                 professor_id INTEGER NOT NULL,
                 department_id INTEGER NOT NULL,
                 department_code TEXT,
@@ -348,7 +391,7 @@ def write_sqlite_database(
                 FOREIGN KEY (department_id) REFERENCES departments(department_id)
             );
 
-            CREATE TABLE professor_reviews (
+            CREATE TABLE IF NOT EXISTS professor_reviews (
                 review_id INTEGER PRIMARY KEY,
                 professor_id INTEGER NOT NULL,
                 course_id INTEGER,
@@ -362,7 +405,7 @@ def write_sqlite_database(
                 FOREIGN KEY (professor_id) REFERENCES professors(professor_id)
             );
 
-            CREATE TABLE professor_course_rating_summaries (
+            CREATE TABLE IF NOT EXISTS professor_course_rating_summaries (
                 professor_id INTEGER NOT NULL,
                 course_id INTEGER,
                 course_code TEXT NOT NULL,
@@ -374,7 +417,7 @@ def write_sqlite_database(
                 FOREIGN KEY (professor_id) REFERENCES professors(professor_id)
             );
 
-            CREATE TABLE unmatched_course_professors (
+            CREATE TABLE IF NOT EXISTS unmatched_course_professors (
                 normalized_name TEXT PRIMARY KEY,
                 names TEXT NOT NULL
             );
@@ -382,91 +425,111 @@ def write_sqlite_database(
         )
 
         connection.executemany(
-            "INSERT INTO departments (department_id, department_code, name) VALUES (?, ?, ?)",
+            "INSERT OR REPLACE INTO departments (department_id, department_code, name) VALUES (?, ?, ?)",
             [(department.department_id, department.department_code, department.name) for department in departments],
         )
 
+        connection.execute("DELETE FROM unmatched_course_professors")
         connection.executemany(
-            """
-            INSERT INTO professors (
-                professor_id,
-                first_name,
-                last_name,
-                full_name,
-                normalized_name,
-                uni,
-                nugget,
-                status,
-                number_of_reviews,
-                rating_count,
-                avg_rating,
-                agree_count,
-                disagree_count,
-                funny_count,
-                rating_1_count,
-                rating_2_count,
-                rating_3_count,
-                rating_4_count,
-                rating_5_count,
-                latest_review_date,
-                scraped_at
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [professor_row(professor, rating_summaries[professor_id], scraped_at) for professor_id, professor in professors.items()],
-        )
-
-        department_rows = []
-        for professor in professors.values():
-            for department in professor.departments.values():
-                department_rows.append(
-                    (professor.professor_id, department.department_id, department.department_code, department.name)
-                )
-
-        connection.executemany(
-            """
-            INSERT INTO professor_departments (professor_id, department_id, department_code, department_name)
-            VALUES (?, ?, ?, ?)
-            """,
-            department_rows,
-        )
-
-        connection.executemany(
-            """
-            INSERT INTO professor_reviews (
-                review_id,
-                professor_id,
-                course_id,
-                course_code,
-                course_name,
-                rating,
-                agree_count,
-                disagree_count,
-                funny_count,
-                submission_date
-            ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
-            """,
-            [review_rating_row(review_rating) for review_rating in review_ratings],
-        )
-
-        connection.executemany(
-            """
-            INSERT INTO professor_course_rating_summaries (
-                professor_id,
-                course_id,
-                course_code,
-                course_name,
-                review_count,
-                rating_count,
-                avg_rating
-            ) VALUES (?, ?, ?, ?, ?, ?, ?)
-            """,
-            course_rating_summary_rows(review_ratings),
-        )
-
-        connection.executemany(
-            "INSERT INTO unmatched_course_professors (normalized_name, names) VALUES (?, ?)",
+            "INSERT OR REPLACE INTO unmatched_course_professors (normalized_name, names) VALUES (?, ?)",
             [(normalized_name, json.dumps(sorted(names))) for normalized_name, names in unmatched_names.items()],
         )
+
+
+def write_professor_rating(
+    connection: sqlite3.Connection,
+    professor: Professor,
+    rating_summary: RatingSummary,
+    review_ratings: list[ProfessorReviewRating],
+    scraped_at: str,
+) -> None:
+    connection.execute("DELETE FROM professor_reviews WHERE professor_id = ?", (professor.professor_id,))
+    connection.execute("DELETE FROM professor_course_rating_summaries WHERE professor_id = ?", (professor.professor_id,))
+    connection.execute("DELETE FROM professor_departments WHERE professor_id = ?", (professor.professor_id,))
+
+    connection.execute(
+        """
+        INSERT OR REPLACE INTO professors (
+            professor_id,
+            first_name,
+            last_name,
+            full_name,
+            normalized_name,
+            uni,
+            nugget,
+            status,
+            number_of_reviews,
+            rating_count,
+            avg_rating,
+            agree_count,
+            disagree_count,
+            funny_count,
+            rating_1_count,
+            rating_2_count,
+            rating_3_count,
+            rating_4_count,
+            rating_5_count,
+            latest_review_date,
+            scraped_at
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        professor_row(professor, rating_summary, scraped_at),
+    )
+
+    connection.executemany(
+        """
+        INSERT INTO professor_departments (professor_id, department_id, department_code, department_name)
+        VALUES (?, ?, ?, ?)
+        """,
+        [
+            (professor.professor_id, department.department_id, department.department_code, department.name)
+            for department in professor.departments.values()
+        ],
+    )
+
+    connection.executemany(
+        """
+        INSERT OR REPLACE INTO professor_reviews (
+            review_id,
+            professor_id,
+            course_id,
+            course_code,
+            course_name,
+            rating,
+            agree_count,
+            disagree_count,
+            funny_count,
+            submission_date
+        ) VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+        """,
+        [review_rating_row(review_rating) for review_rating in review_ratings],
+    )
+
+    connection.executemany(
+        """
+        INSERT OR REPLACE INTO professor_course_rating_summaries (
+            professor_id,
+            course_id,
+            course_code,
+            course_name,
+            review_count,
+            rating_count,
+            avg_rating
+        ) VALUES (?, ?, ?, ?, ?, ?, ?)
+        """,
+        course_rating_summary_rows(review_ratings),
+    )
+
+
+def completed_professor_ids(output_db: Path) -> set[int]:
+    if not output_db.exists():
+        return set()
+
+    with sqlite3.connect(output_db) as connection:
+        try:
+            return {row[0] for row in connection.execute("SELECT professor_id FROM professors")}
+        except sqlite3.OperationalError:
+            return set()
 
 
 def professor_row(professor: Professor, rating_summary: RatingSummary, scraped_at: str) -> tuple[object, ...]:
@@ -575,6 +638,66 @@ def write_json_summary(output_json: Path, rows: list[dict[str, object]], pretty:
     )
 
 
+def write_json_summary_from_database(output_db: Path, output_json: Path, pretty: bool) -> None:
+    rows: list[dict[str, object]] = []
+    with sqlite3.connect(output_db) as connection:
+        connection.row_factory = sqlite3.Row
+        professor_rows = connection.execute(
+            """
+            SELECT
+                professor_id,
+                full_name,
+                normalized_name,
+                uni,
+                nugget,
+                number_of_reviews,
+                rating_count,
+                avg_rating,
+                agree_count,
+                disagree_count,
+                funny_count,
+                latest_review_date
+            FROM professors
+            ORDER BY full_name, professor_id
+            """
+        ).fetchall()
+
+        for professor_row_data in professor_rows:
+            department_rows = connection.execute(
+                """
+                SELECT department_name
+                FROM professor_departments
+                WHERE professor_id = ?
+                ORDER BY department_name
+                """,
+                (professor_row_data["professor_id"],),
+            ).fetchall()
+            rows.append(
+                {
+                    "professor_id": professor_row_data["professor_id"],
+                    "name": professor_row_data["full_name"],
+                    "normalized_name": professor_row_data["normalized_name"],
+                    "uni": professor_row_data["uni"],
+                    "nugget": professor_row_data["nugget"],
+                    "number_of_reviews": professor_row_data["number_of_reviews"],
+                    "rating_count": professor_row_data["rating_count"],
+                    "avg_rating": professor_row_data["avg_rating"],
+                    "agree_count": professor_row_data["agree_count"],
+                    "disagree_count": professor_row_data["disagree_count"],
+                    "funny_count": professor_row_data["funny_count"],
+                    "latest_review_date": professor_row_data["latest_review_date"],
+                    "departments": [row["department_name"] for row in department_rows],
+                }
+            )
+
+    write_json_summary(output_json, rows, pretty)
+
+
+def count_database_rows(output_db: Path, table_name: str) -> int:
+    with sqlite3.connect(output_db) as connection:
+        return int(connection.execute(f"SELECT COUNT(*) FROM {table_name}").fetchone()[0])
+
+
 def clean_text(value: object) -> str:
     if value is None:
         return ""
@@ -603,6 +726,8 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--delay", type=float, default=0.03, help="Delay between CULPA API requests.")
     parser.add_argument("--retries", type=positive_int, default=3, help="Retry count for transient request failures.")
     parser.add_argument("--max-professors", type=positive_int, help="Limit rating fetches for smoke tests.")
+    parser.add_argument("--workers", type=positive_int, default=1, help="Concurrent workers for fetching professor review pages.")
+    parser.add_argument("--resume", action="store_true", help="Keep existing database rows and skip professors already written.")
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON summary output.")
     return parser.parse_args(argv)
 
@@ -636,25 +761,70 @@ def main(argv: Iterable[str] | None = None) -> int:
         target_professors = dict(list(target_professors.items())[: args.max_professors])
         print(f"Limiting scrape to {len(target_professors)} professors.", file=sys.stderr)
 
-    rating_summaries: dict[int, RatingSummary] = {}
-    review_ratings: list[ProfessorReviewRating] = []
-    for index, professor in enumerate(target_professors.values(), start=1):
+    target_professor_list = list(target_professors.values())
+    initialize_sqlite_database(args.output_db, departments, unmatched_names, reset=not args.resume)
+    completed_ids = completed_professor_ids(args.output_db) if args.resume else set()
+    if completed_ids:
+        target_professor_list = [professor for professor in target_professor_list if professor.professor_id not in completed_ids]
         print(
-            f"Fetching CULPA ratings for {professor.full_name} ({index}/{len(target_professors)})",
+            f"Resuming scrape: skipping {len(completed_ids)} professors already stored; "
+            f"{len(target_professor_list)} remain.",
             file=sys.stderr,
         )
-        rating_summary, professor_review_ratings = scraper.fetch_professor_ratings(professor.professor_id)
-        rating_summaries[professor.professor_id] = rating_summary
-        review_ratings.extend(professor_review_ratings)
 
-    write_sqlite_database(args.output_db, departments, target_professors, rating_summaries, review_ratings, unmatched_names)
-    write_json_summary(args.output_json, build_json_summary(target_professors, rating_summaries), args.pretty)
+    scraped_at = datetime.now(timezone.utc).isoformat(timespec="seconds")
+    with sqlite3.connect(args.output_db) as connection:
+        connection.execute("PRAGMA foreign_keys = ON")
+        for professor, rating_summary, professor_review_ratings in iter_rating_results(
+            target_professor_list,
+            delay_seconds=args.delay,
+            max_retries=args.retries,
+            workers=args.workers,
+        ):
+            write_professor_rating(connection, professor, rating_summary, professor_review_ratings, scraped_at)
+            connection.commit()
+
+    write_json_summary_from_database(args.output_db, args.output_json, args.pretty)
+    professor_count = count_database_rows(args.output_db, "professors")
     print(
-        f"Wrote {len(target_professors)} professor rating summaries to {args.output_db} "
+        f"Wrote {professor_count} professor rating summaries to {args.output_db} "
         f"and {args.output_json}; no review comments stored.",
         file=sys.stderr,
     )
     return 0
+
+
+def iter_rating_results(
+    professors: list[Professor],
+    delay_seconds: float,
+    max_retries: int,
+    workers: int,
+) -> Iterable[tuple[Professor, RatingSummary, list[ProfessorReviewRating]]]:
+    if workers == 1:
+        scraper = CulpaScraper(delay_seconds=delay_seconds, max_retries=max_retries)
+        for index, professor in enumerate(professors, start=1):
+            print(
+                f"Fetching CULPA ratings for {professor.full_name} ({index}/{len(professors)})",
+                file=sys.stderr,
+            )
+            rating_summary, professor_review_ratings = scraper.fetch_professor_ratings(professor.professor_id)
+            yield professor, rating_summary, professor_review_ratings
+        return
+
+    def fetch_professor(professor: Professor) -> tuple[Professor, RatingSummary, list[ProfessorReviewRating]]:
+        worker_scraper = CulpaScraper(delay_seconds=delay_seconds, max_retries=max_retries)
+        rating_summary, professor_review_ratings = worker_scraper.fetch_professor_ratings(professor.professor_id)
+        return professor, rating_summary, professor_review_ratings
+
+    with ThreadPoolExecutor(max_workers=workers) as executor:
+        futures = {executor.submit(fetch_professor, professor): professor for professor in professors}
+        for index, future in enumerate(as_completed(futures), start=1):
+            professor, rating_summary, professor_review_ratings = future.result()
+            print(
+                f"Fetched CULPA ratings for {professor.full_name} ({index}/{len(professors)})",
+                file=sys.stderr,
+            )
+            yield professor, rating_summary, professor_review_ratings
 
 
 if __name__ == "__main__":

@@ -5,8 +5,7 @@ import json
 import re
 import sys
 import time
-from dataclasses import asdict, dataclass
-from datetime import datetime, timezone
+from dataclasses import dataclass
 from pathlib import Path
 from typing import Iterable
 from urllib.parse import urldefrag, urljoin
@@ -24,12 +23,19 @@ COURSE_CODE_RE = re.compile(
 )
 CREDIT_RE = re.compile(r"(?P<min>\d+(?:\.\d+)?)(?:\s*-\s*(?P<max>\d+(?:\.\d+)?))?")
 MEETING_RE = re.compile(
-    r"^(?P<days>(?:Th|M|T|W|R|F|S|U)(?:\s*(?:Th|M|T|W|R|F|S|U))*)\s+"
+    r"^(?P<days>.+?)\s+"
     r"(?P<start>\d{1,2}:\d{2}\s*(?:am|pm|AM|PM))\s*-\s*"
     r"(?P<end>\d{1,2}:\d{2}\s*(?:am|pm|AM|PM))$"
 )
-ENROLLMENT_RE = re.compile(r"^(?P<enrolled>\d+)\s*/\s*(?P<capacity>\d+)$")
-DAY_TOKEN_RE = re.compile(r"Th|M|T|W|R|F|S|U", re.IGNORECASE)
+DAY_ALIASES = {
+    "M": "M",
+    "T": "T",
+    "W": "W",
+    "R": "Th",
+    "F": "F",
+    "S": "S",
+    "U": "Su",
+}
 
 
 @dataclass(frozen=True)
@@ -40,47 +46,10 @@ class Department:
 
 
 @dataclass(frozen=True)
-class Meeting:
-    raw: str
-    days: list[str]
-    start_time: str | None
-    end_time: str | None
-    location: str | None
-
-
-@dataclass(frozen=True)
-class CourseSection:
-    term: str
-    scheduled_course_code: str | None
-    course_number: str
-    section: str | None
-    call_number: str | None
-    times_location: str | None
-    instructor: str | None
-    points: str | None
-    enrollment: str | None
-    enrolled: int | None
-    capacity: int | None
-    meetings: list[Meeting]
-
-
-@dataclass(frozen=True)
-class Course:
-    department: str
-    department_slug: str
-    department_url: str
-    source_url: str
-    code: str
-    subject: str
-    catalog_number: str
-    title: str
-    credits: str | None
-    min_credits: float | None
-    max_credits: float | None
-    description: str | None
-    prerequisites: str | None
-    corequisites: str | None
-    sections: list[CourseSection]
+class CourseHeader:
+    course_code: str
+    name: str
+    credit_hrs: float | str | None
 
 
 class ColumbiaBulletinScraper:
@@ -131,35 +100,49 @@ class ColumbiaBulletinScraper:
 
         return departments
 
-    def scrape(
+    def scrape_course_rows(
         self,
+        term: str | None = None,
         department_filters: Iterable[str] | None = None,
         max_departments: int | None = None,
-    ) -> tuple[list[Department], list[Course]]:
+    ) -> tuple[list[dict[str, object]], int, int]:
         departments = filter_departments(self.fetch_department_links(), department_filters)
         if max_departments is not None:
             departments = departments[:max_departments]
 
-        courses: list[Course] = []
+        course_rows: list[dict[str, object]] = []
+        seen_call_numbers: set[tuple[str, str]] = set()
+        duplicate_count = 0
+
         for index, department in enumerate(departments):
             if index > 0 and self.delay_seconds > 0:
                 time.sleep(self.delay_seconds)
+
             print(f"Scraping {department.name} ({department.url})", file=sys.stderr)
-            courses.extend(self.scrape_department(department))
+            for section_term, row in self.scrape_department_rows(department, term):
+                call_number = row.get("call number")
+                if not isinstance(call_number, str) or not call_number:
+                    continue
 
-        return departments, dedupe_courses(courses)
+                section_key = (section_term, call_number)
+                if section_key in seen_call_numbers:
+                    duplicate_count += 1
+                    continue
 
-    def scrape_department(self, department: Department) -> list[Course]:
+                seen_call_numbers.add(section_key)
+                course_rows.append({"course_id": len(course_rows) + 1, **row})
+
+        return course_rows, len(departments), duplicate_count
+
+    def scrape_department_rows(self, department: Department, term: str | None) -> list[tuple[str, dict[str, object]]]:
         soup = self.fetch_soup(department.url)
         container = soup.select_one("#coursestextcontainer") or soup.select_one("#sc_sccourseblock") or soup
-        courses: list[Course] = []
+        rows: list[tuple[str, dict[str, object]]] = []
 
         for course_block in container.select("div.courseblock"):
-            parsed_course = parse_course_block(course_block, department)
-            if parsed_course is not None:
-                courses.append(parsed_course)
+            rows.extend(parse_course_rows(course_block, department, term))
 
-        return courses
+        return rows
 
     def fetch_soup(self, url: str) -> BeautifulSoup:
         for attempt in range(self.max_retries + 1):
@@ -181,47 +164,46 @@ class ColumbiaBulletinScraper:
         raise RuntimeError(f"Unable to fetch {url}")
 
 
-def parse_course_block(course_block: Tag, department: Department) -> Course | None:
+def parse_course_rows(
+    course_block: Tag,
+    department: Department,
+    requested_term: str | None,
+) -> list[tuple[str, dict[str, object]]]:
+    course_header = parse_course_header(course_block)
+    if course_header is None:
+        return []
+
+    rows: list[tuple[str, dict[str, object]]] = []
+    for schedule_table in course_block.select("table.scheduletbl"):
+        current_term: str | None = None
+
+        for table_row in schedule_table.select("tr"):
+            term_header = table_row.select_one(".desc_sched_header")
+            if term_header is not None:
+                current_term = parse_term_header(term_header)
+                continue
+
+            if table_row.find("th") is not None or current_term is None:
+                continue
+            if requested_term is not None and current_term != requested_term:
+                continue
+
+            cells = table_row.find_all("td", recursive=False)
+            if len(cells) < 6:
+                continue
+
+            section_row = build_section_row(course_header, department, cells)
+            if section_row is not None:
+                rows.append((current_term, section_row))
+
+    return rows
+
+
+def parse_course_header(course_block: Tag) -> CourseHeader | None:
     title_node = course_block.select_one("p.courseblocktitle")
     if title_node is None:
         return None
 
-    parsed_title = parse_title_node(title_node)
-    if parsed_title is None:
-        return None
-
-    subject, catalog_number, title, credits, min_credits, max_credits = parsed_title
-    code = f"{subject} {catalog_number}"
-
-    description_parts: list[str] = []
-    for paragraph in course_block.find_all("p", recursive=False):
-        classes = set(paragraph.get("class", []))
-        if "courseblocktitle" in classes:
-            continue
-        text = clean_text(paragraph.get_text(" ", strip=True))
-        if text:
-            description_parts.append(text)
-
-    return Course(
-        department=department.name,
-        department_slug=department.slug,
-        department_url=department.url,
-        source_url=department.url,
-        code=code,
-        subject=subject,
-        catalog_number=catalog_number,
-        title=title,
-        credits=credits,
-        min_credits=min_credits,
-        max_credits=max_credits,
-        description="\n\n".join(description_parts) if description_parts else None,
-        prerequisites=first_class_text(course_block, "prereq"),
-        corequisites=first_class_text(course_block, "coreq"),
-        sections=parse_sections(course_block),
-    )
-
-
-def parse_title_node(title_node: Tag) -> tuple[str, str, str, str | None, float | None, float | None] | None:
     first_strong = title_node.find("strong")
     if first_strong is None:
         return None
@@ -232,96 +214,46 @@ def parse_title_node(title_node: Tag) -> tuple[str, str, str, str | None, float 
         return None
 
     credits_node = title_node.find("em")
-    credits = clean_text(credits_node.get_text(" ", strip=True)).rstrip(".") if credits_node else None
-    min_credits, max_credits = parse_credits(credits)
-
-    return (
-        match.group("subject"),
-        match.group("catalog_number"),
-        clean_text(match.group("title")).rstrip("."),
-        credits,
-        min_credits,
-        max_credits,
+    credits_text = clean_text(credits_node.get_text(" ", strip=True)).rstrip(".") if credits_node else None
+    course_code = f"{match.group('subject')} {match.group('catalog_number')}"
+    return CourseHeader(
+        course_code=course_code,
+        name=clean_text(match.group("title")).rstrip("."),
+        credit_hrs=clean_credit_hours(points=None, catalog_credits=credits_text),
     )
 
 
-def parse_sections(course_block: Tag) -> list[CourseSection]:
-    sections: list[CourseSection] = []
+def build_section_row(course_header: CourseHeader, department: Department, cells: list[Tag]) -> dict[str, object] | None:
+    raw_section_call = clean_text(cells[1].get_text(" ", strip=True))
+    section, call_number = parse_section_call(raw_section_call)
+    if call_number is None:
+        return None
 
-    for schedule_table in course_block.select("table.scheduletbl"):
-        current_term: str | None = None
-        current_scheduled_course_code: str | None = None
+    times_location_lines = clean_lines(cells[2])
+    section_points = clean_text(cells[4].get_text(" ", strip=True)) or None
+    location = clean_locations(times_location_lines)
 
-        for row in schedule_table.select("tr"):
-            header = row.select_one(".desc_sched_header")
-            if header is not None:
-                current_term, current_scheduled_course_code = parse_term_header(header)
-                continue
-
-            if row.find("th") is not None or current_term is None:
-                continue
-
-            cells = row.find_all("td", recursive=False)
-            if len(cells) < 6:
-                continue
-
-            raw_section_call = clean_text(cells[1].get_text(" ", strip=True))
-            section, call_number = parse_section_call(raw_section_call)
-            times_location_lines = clean_lines(cells[2])
-            enrollment = clean_text(cells[5].get_text(" ", strip=True)) or None
-            enrolled, capacity = parse_enrollment(enrollment)
-
-            sections.append(
-                CourseSection(
-                    term=current_term,
-                    scheduled_course_code=current_scheduled_course_code,
-                    course_number=clean_text(cells[0].get_text(" ", strip=True)),
-                    section=section,
-                    call_number=call_number,
-                    times_location=" | ".join(times_location_lines) if times_location_lines else None,
-                    instructor=clean_text(cells[3].get_text(" ", strip=True)) or None,
-                    points=clean_text(cells[4].get_text(" ", strip=True)) or None,
-                    enrollment=enrollment,
-                    enrolled=enrolled,
-                    capacity=capacity,
-                    meetings=parse_meetings(times_location_lines),
-                )
-            )
-
-    return sections
+    row: dict[str, object] = {
+        "course_code": course_header.course_code,
+        "name": course_header.name,
+        "section": section,
+        "credit_hrs": clean_credit_hours(points=section_points, catalog_credits=course_header.credit_hrs),
+        "location": location,
+        "prof_name": clean_text(cells[3].get_text(" ", strip=True)) or None,
+        "department": department.name,
+        "call number": call_number,
+    }
+    row.update(clean_meeting_fields(times_location_lines))
+    return row
 
 
-def parse_term_header(header: Tag) -> tuple[str | None, str | None]:
+def parse_term_header(header: Tag) -> str | None:
     header_text = clean_text(header.get_text(" ", strip=True))
     if not header_text:
-        return None, None
+        return None
 
-    term, separator, scheduled_course_code = header_text.partition(":")
-    return clean_text(term), clean_text(scheduled_course_code) if separator else None
-
-
-def parse_meetings(times_location_lines: list[str]) -> list[Meeting]:
-    meeting_matches: list[tuple[str, re.Match[str]]] = []
-    location_parts: list[str] = []
-
-    for line in times_location_lines:
-        match = MEETING_RE.match(line)
-        if match is not None:
-            meeting_matches.append((line, match))
-        elif line:
-            location_parts.append(line)
-
-    location = " ".join(location_parts) or None
-    return [
-        Meeting(
-            raw=line,
-            days=parse_meeting_days(match.group("days")),
-            start_time=normalize_time(match.group("start")),
-            end_time=normalize_time(match.group("end")),
-            location=location,
-        )
-        for line, match in meeting_matches
-    ]
+    term, _, _ = header_text.partition(":")
+    return clean_text(term) or None
 
 
 def parse_section_call(raw_section_call: str) -> tuple[str | None, str | None]:
@@ -333,39 +265,107 @@ def parse_section_call(raw_section_call: str) -> tuple[str | None, str | None]:
     return clean_text(section) or None, clean_text(call_number) or None
 
 
-def parse_credits(credits: str | None) -> tuple[float | None, float | None]:
-    if credits is None:
-        return None, None
+def clean_meeting_fields(times_location_lines: list[str]) -> dict[str, object]:
+    meetings = [meeting for line in times_location_lines if (meeting := parse_meeting(line)) is not None]
+    if not meetings:
+        return {}
 
-    match = CREDIT_RE.search(credits)
+    first_meeting = meetings[0]
+    days = list(first_meeting["days"])
+    for meeting in meetings[1:]:
+        if meeting["start_time"] != first_meeting["start_time"] or meeting["end_time"] != first_meeting["end_time"]:
+            break
+        for day in meeting["days"]:
+            append_unique(days, day)
+
+    return {
+        "days": days,
+        "start_time": first_meeting["start_time"],
+        "end_time": first_meeting["end_time"],
+    }
+
+
+def parse_meeting(line: str) -> dict[str, object] | None:
+    match = MEETING_RE.match(line)
     if match is None:
-        return None, None
-
-    min_credits = float(match.group("min"))
-    max_credits = float(match.group("max")) if match.group("max") else min_credits
-    return min_credits, max_credits
-
-
-def parse_enrollment(enrollment: str | None) -> tuple[int | None, int | None]:
-    if not enrollment:
-        return None, None
-    match = ENROLLMENT_RE.match(enrollment)
-    if match is None:
-        return None, None
-    return int(match.group("enrolled")), int(match.group("capacity"))
-
-
-def first_class_text(course_block: Tag, class_name: str) -> str | None:
-    node = course_block.select_one(f".{class_name}")
-    if node is None:
         return None
-    return clean_text(node.get_text(" ", strip=True)) or None
+
+    days = parse_meeting_days(match.group("days"))
+    if not days:
+        return None
+
+    return {
+        "days": days,
+        "start_time": normalize_time(match.group("start")),
+        "end_time": normalize_time(match.group("end")),
+    }
 
 
-def clean_text(text: str | None) -> str:
+def parse_meeting_days(days_text: str) -> list[str]:
+    days: list[str] = []
+    index = 0
+    text = clean_text(days_text).replace(",", " ")
+
+    while index < len(text):
+        if text[index].isspace():
+            index += 1
+            continue
+
+        two_character_day = text[index : index + 2].lower()
+        if two_character_day == "th":
+            append_unique(days, "Th")
+            index += 2
+            continue
+        if two_character_day == "sa":
+            append_unique(days, "Sa")
+            index += 2
+            continue
+        if two_character_day == "su":
+            append_unique(days, "Su")
+            index += 2
+            continue
+
+        day = DAY_ALIASES.get(text[index].upper())
+        if day is not None:
+            append_unique(days, day)
+        index += 1
+
+    return days
+
+
+def clean_credit_hours(points: str | None, catalog_credits: object) -> float | str | None:
+    if isinstance(points, str) and points.strip():
+        parsed_points = parse_numeric_text(points)
+        return parsed_points if parsed_points is not None else clean_text(points)
+
+    if isinstance(catalog_credits, int | float):
+        return float(catalog_credits)
+    if isinstance(catalog_credits, str):
+        match = CREDIT_RE.search(catalog_credits)
+        if match is None:
+            return clean_text(catalog_credits) or None
+
+        min_credits = float(match.group("min"))
+        max_credits = float(match.group("max")) if match.group("max") else min_credits
+        if min_credits == max_credits:
+            return min_credits
+        return f"{min_credits:g}-{max_credits:g}"
+
+    return None
+
+
+def clean_locations(times_location_lines: list[str]) -> str | None:
+    locations: list[str] = []
+    for line in times_location_lines:
+        if parse_meeting(line) is None:
+            append_unique(locations, line)
+    return "; ".join(locations) if locations else None
+
+
+def clean_text(text: object) -> str:
     if text is None:
         return ""
-    return SPACE_RE.sub(" ", text.replace("\xa0", " ")).strip()
+    return SPACE_RE.sub(" ", str(text).replace("\xa0", " ")).strip()
 
 
 def clean_lines(node: Tag) -> list[str]:
@@ -374,10 +374,6 @@ def clean_lines(node: Tag) -> list[str]:
 
 def normalize_time(time_text: str) -> str:
     return clean_text(time_text).replace(" ", "").lower()
-
-
-def parse_meeting_days(days_text: str) -> list[str]:
-    return [day_token.title() for day_token in DAY_TOKEN_RE.findall(clean_text(days_text).replace(" ", ""))]
 
 
 def ensure_trailing_slash(url: str) -> str:
@@ -400,316 +396,6 @@ def filter_departments(departments: list[Department], filters: Iterable[str] | N
     ]
 
 
-def dedupe_courses(courses: list[Course]) -> list[Course]:
-    seen: set[tuple[str, str, str]] = set()
-    unique_courses: list[Course] = []
-
-    for course in courses:
-        key = (course.department_slug, course.code, course.title)
-        if key in seen:
-            continue
-        seen.add(key)
-        unique_courses.append(course)
-
-    return unique_courses
-
-
-def build_payload(seed_url: str, departments: list[Department], courses: list[Course]) -> dict[str, object]:
-    return {
-        "source": seed_url,
-        "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "department_count": len(departments),
-        "course_count": len(courses),
-        "section_count": sum(len(course.sections) for course in courses),
-        "departments": [asdict(department) for department in departments],
-        "courses": [asdict(course) for course in courses],
-    }
-
-
-def build_flat_section_payload(
-    seed_url: str,
-    departments: list[Department],
-    courses: list[Course],
-    term: str | None,
-) -> dict[str, object]:
-    course_entries = flatten_courses_by_section(courses, term)
-    source_section_count = count_matching_sections(courses, term)
-
-    return {
-        "source": seed_url,
-        "scraped_at": datetime.now(timezone.utc).isoformat(timespec="seconds"),
-        "term": term,
-        "department_count": len(departments),
-        "source_section_count": source_section_count,
-        "duplicate_source_section_count": source_section_count - len(course_entries),
-        "unique_catalog_course_count": len(unique_catalog_course_keys(course_entries)),
-        "course_entry_count": len(course_entries),
-        "courses": course_entries,
-    }
-
-
-def flatten_courses_by_section(courses: list[Course], term: str | None) -> list[dict[str, object]]:
-    entries: list[dict[str, object]] = []
-    entries_by_call_number: dict[tuple[str, str], dict[str, object]] = {}
-
-    for course in courses:
-        for section in course.sections:
-            if term is not None and section.term != term:
-                continue
-
-            if section.call_number is not None:
-                call_number_key = (section.term, section.call_number)
-                existing_entry = entries_by_call_number.get(call_number_key)
-                if existing_entry is not None:
-                    add_catalog_course_ref(existing_entry, course)
-                    continue
-
-            entry = build_flat_section_entry(course, section, len(entries))
-            entries.append(entry)
-            if section.call_number is not None:
-                entries_by_call_number[(section.term, section.call_number)] = entry
-
-    return entries
-
-
-def build_flat_section_entry(course: Course, section: CourseSection, entry_index: int) -> dict[str, object]:
-    return {
-        "entry_index": entry_index,
-        "entry_id": build_section_entry_id(course, section),
-        "term": section.term,
-        "department": course.department,
-        "department_slug": course.department_slug,
-        "department_url": course.department_url,
-        "source_url": course.source_url,
-        "catalog_course_key": build_catalog_course_key(course),
-        "catalog_course_refs": [build_catalog_course_ref(course)],
-        "code": course.code,
-        "subject": course.subject,
-        "catalog_number": course.catalog_number,
-        "title": course.title,
-        "credits": course.credits,
-        "min_credits": course.min_credits,
-        "max_credits": course.max_credits,
-        "description": course.description,
-        "prerequisites": course.prerequisites,
-        "corequisites": course.corequisites,
-        "scheduled_course_code": section.scheduled_course_code,
-        "course_number": section.course_number,
-        "section": section.section,
-        "call_number": section.call_number,
-        "times_location": section.times_location,
-        "instructor": section.instructor,
-        "points": section.points,
-        "enrollment": section.enrollment,
-        "enrolled": section.enrolled,
-        "capacity": section.capacity,
-        "meetings": [asdict(meeting) for meeting in section.meetings],
-    }
-
-
-def count_matching_sections(courses: list[Course], term: str | None) -> int:
-    return sum(
-        1
-        for course in courses
-        for section in course.sections
-        if term is None or section.term == term
-    )
-
-
-def unique_catalog_course_keys(entries: list[dict[str, object]]) -> set[str]:
-    catalog_course_keys: set[str] = set()
-
-    for entry in entries:
-        catalog_course_refs = entry.get("catalog_course_refs")
-        if not isinstance(catalog_course_refs, list):
-            continue
-        for catalog_course_ref in catalog_course_refs:
-            if isinstance(catalog_course_ref, dict) and isinstance(catalog_course_ref.get("catalog_course_key"), str):
-                catalog_course_keys.add(catalog_course_ref["catalog_course_key"])
-
-    return catalog_course_keys
-
-
-def add_catalog_course_ref(entry: dict[str, object], course: Course) -> None:
-    catalog_course_refs = entry.get("catalog_course_refs")
-    if not isinstance(catalog_course_refs, list):
-        return
-
-    catalog_course_key = build_catalog_course_key(course)
-    if any(
-        isinstance(catalog_course_ref, dict) and catalog_course_ref.get("catalog_course_key") == catalog_course_key
-        for catalog_course_ref in catalog_course_refs
-    ):
-        return
-
-    catalog_course_refs.append(build_catalog_course_ref(course))
-
-
-def build_catalog_course_ref(course: Course) -> dict[str, str | None]:
-    return {
-        "catalog_course_key": build_catalog_course_key(course),
-        "code": course.code,
-        "title": course.title,
-        "department": course.department,
-        "department_slug": course.department_slug,
-        "department_url": course.department_url,
-    }
-
-
-def build_catalog_course_key(course: Course) -> str:
-    return f"{course.department_slug}:{course.code}"
-
-
-def build_section_entry_id(course: Course, section: CourseSection) -> str:
-    return ":".join(
-        part
-        for part in [section.term, course.code, section.section, section.call_number]
-        if part
-    )
-
-
-def build_clean_flat_section_entries(entries: list[dict[str, object]]) -> list[dict[str, object]]:
-    return [build_clean_flat_section_entry(entry, course_id) for course_id, entry in enumerate(entries, start=1)]
-
-
-def build_clean_flat_section_entry(entry: dict[str, object], course_id: int) -> dict[str, object]:
-    clean_entry: dict[str, object] = {
-        "course_id": course_id,
-        "course_code": entry.get("code"),
-        "name": entry.get("title"),
-        "section": entry.get("section"),
-        "credit_hrs": clean_credit_hours(entry),
-    }
-
-    meeting_fields = clean_meeting_fields(entry)
-    if meeting_fields is not None:
-        clean_entry.update(meeting_fields)
-
-    clean_entry.update(
-        {
-        "location": clean_locations(entry),
-        "prof_name": entry.get("instructor"),
-        "department": entry.get("department"),
-        "call number": entry.get("call_number"),
-        }
-    )
-    return clean_entry
-
-
-def clean_credit_hours(entry: dict[str, object]) -> float | str | None:
-    points = entry.get("points")
-    if isinstance(points, str) and points.strip():
-        parsed_points = parse_numeric_text(points)
-        return parsed_points if parsed_points is not None else clean_text(points)
-
-    min_credits = entry.get("min_credits")
-    max_credits = entry.get("max_credits")
-    if isinstance(min_credits, int | float) and isinstance(max_credits, int | float):
-        if min_credits == max_credits:
-            return float(min_credits)
-        return f"{min_credits:g}-{max_credits:g}"
-
-    return None
-
-
-def clean_meeting_fields(entry: dict[str, object]) -> dict[str, object] | None:
-    meetings = clean_meeting_records(entry)
-    if not meetings:
-        return None
-
-    if len(meetings) == 1:
-        meeting = meetings[0]
-        return {
-            "days": meeting["days"],
-            "start_time": meeting["start_time"],
-            "end_time": meeting["end_time"],
-        }
-
-    start_times = [meeting["start_time"] for meeting in meetings]
-    end_times = [meeting["end_time"] for meeting in meetings]
-    same_time_range = len(set(start_times)) == 1 and len(set(end_times)) == 1
-    if same_time_range:
-        days: list[str] = []
-        for meeting in meetings:
-            for day in meeting["days"]:
-                append_unique(days, day)
-
-        return {
-            "days": days,
-            "start_time": start_times[0],
-            "end_time": end_times[0],
-        }
-
-    return {
-        "days": [meeting["days"] for meeting in meetings],
-        "start_time": start_times,
-        "end_time": end_times,
-    }
-
-
-def clean_meeting_records(entry: dict[str, object]) -> list[dict[str, object]]:
-    meetings = entry.get("meetings")
-    clean_meetings: list[dict[str, object]] = []
-
-    if isinstance(meetings, list):
-        for meeting in meetings:
-            if not isinstance(meeting, dict):
-                continue
-            days = meeting.get("days")
-            start_time = meeting.get("start_time")
-            end_time = meeting.get("end_time")
-            if isinstance(days, list) and isinstance(start_time, str) and isinstance(end_time, str):
-                clean_meetings.append(
-                    {
-                        "days": [str(day) for day in days],
-                        "start_time": start_time,
-                        "end_time": end_time,
-                    }
-                )
-
-    if clean_meetings:
-        return clean_meetings
-
-    times_location = entry.get("times_location")
-    if isinstance(times_location, str):
-        for time_part in split_times_location(times_location):
-            match = MEETING_RE.match(time_part)
-            if match is None:
-                continue
-            clean_meetings.append(
-                {
-                    "days": parse_meeting_days(match.group("days")),
-                    "start_time": normalize_time(match.group("start")),
-                    "end_time": normalize_time(match.group("end")),
-                }
-            )
-
-    return clean_meetings
-
-
-def clean_locations(entry: dict[str, object]) -> str | None:
-    locations: list[str] = []
-    meetings = entry.get("meetings")
-    if isinstance(meetings, list):
-        for meeting in meetings:
-            if isinstance(meeting, dict) and isinstance(meeting.get("location"), str):
-                append_unique(locations, meeting["location"])
-
-    if locations:
-        return "; ".join(locations)
-
-    times_location = entry.get("times_location")
-    if isinstance(times_location, str):
-        location_parts = [part for part in split_times_location(times_location) if not MEETING_RE.match(part)]
-        return "; ".join(location_parts) if location_parts else None
-
-    return None
-
-
-def split_times_location(times_location: str) -> list[str]:
-    return [clean_text(part) for part in times_location.split("|") if clean_text(part)]
-
-
 def append_unique(values: list[str], value: str) -> None:
     cleaned_value = clean_text(value)
     if cleaned_value and cleaned_value not in values:
@@ -724,10 +410,10 @@ def parse_numeric_text(value: str) -> float | None:
         return None
 
 
-def write_payload(payload: object, output_path: Path, pretty: bool) -> None:
-    output_path.parent.mkdir(parents=True, exist_ok=True)
-    output_path.write_text(
-        json.dumps(payload, indent=2 if pretty else None, ensure_ascii=False) + "\n",
+def write_json(path: Path, rows: list[dict[str, object]], pretty: bool) -> None:
+    path.parent.mkdir(parents=True, exist_ok=True)
+    path.write_text(
+        json.dumps(rows, indent=2 if pretty else None, ensure_ascii=False) + "\n",
         encoding="utf-8",
     )
 
@@ -740,15 +426,15 @@ def positive_int(value: str) -> int:
 
 
 def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
-    parser = argparse.ArgumentParser(description="Scrape Columbia College Bulletin courses and scheduled sections.")
-    parser.add_argument("--seed-url", default=DEFAULT_SEED_URL, help="Columbia College departments seed URL.")
+    parser = argparse.ArgumentParser(description="Scrape Columbia Bulletin scheduled sections into clean JSON rows.")
+    parser.add_argument("--seed-url", default=DEFAULT_SEED_URL, help="Bulletin departments seed URL.")
     parser.add_argument("--department", action="append", help="Limit scraping to department name/slug matches.")
     parser.add_argument("--max-departments", type=positive_int, help="Limit the number of department pages scraped.")
     parser.add_argument("--delay", type=float, default=0.25, help="Seconds to wait between department requests.")
     parser.add_argument("--retries", type=int, default=3, help="Retry count for transient request failures.")
-    parser.add_argument("--term", help='Limit flattened section output to a term, such as "Fall 2026".')
-    parser.add_argument("--flat-sections", action="store_true", help="Write one top-level course entry per section.")
-    parser.add_argument("--clean", action="store_true", help="For flattened sections, write only schedule-planner fields.")
+    parser.add_argument("--term", help='Limit sections to a term, such as "Fall 2026".')
+    parser.add_argument("--flat-sections", action="store_true", help="Deprecated; clean section rows are always written.")
+    parser.add_argument("--clean", action="store_true", help="Deprecated; clean section rows are always written.")
     parser.add_argument("--output", type=Path, default=Path("backend/data/columbia_college_courses.json"))
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     return parser.parse_args(argv)
@@ -757,32 +443,18 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
 def main(argv: Iterable[str] | None = None) -> int:
     args = parse_args(argv)
     scraper = ColumbiaBulletinScraper(seed_url=args.seed_url, delay_seconds=args.delay, max_retries=args.retries)
-    departments, courses = scraper.scrape(department_filters=args.department, max_departments=args.max_departments)
-    if args.flat_sections:
-        payload = build_flat_section_payload(scraper.seed_url, departments, courses, args.term)
-        if args.clean:
-            payload = build_clean_flat_section_entries(payload["courses"])
-    else:
-        payload = build_payload(scraper.seed_url, departments, courses)
-    write_payload(payload, args.output, args.pretty)
+    rows, department_count, duplicate_count = scraper.scrape_course_rows(
+        term=args.term,
+        department_filters=args.department,
+        max_departments=args.max_departments,
+    )
+    write_json(args.output, rows, args.pretty)
 
-    if args.flat_sections and args.clean:
-        print(
-            f"Wrote {len(payload)} clean flattened course entries to {args.output}",
-            file=sys.stderr,
-        )
-    elif args.flat_sections:
-        print(
-            f"Wrote {payload['course_entry_count']} flattened course entries "
-            f"from {payload['department_count']} departments to {args.output}",
-            file=sys.stderr,
-        )
-    else:
-        print(
-            f"Wrote {payload['course_count']} courses and {payload['section_count']} sections "
-            f"from {payload['department_count']} departments to {args.output}",
-            file=sys.stderr,
-        )
+    print(
+        f"Wrote {len(rows)} clean course rows from {department_count} departments to {args.output}; "
+        f"skipped {duplicate_count} duplicate call numbers.",
+        file=sys.stderr,
+    )
     return 0
 
 

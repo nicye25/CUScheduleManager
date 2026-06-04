@@ -1,6 +1,6 @@
 # Schedule Planner Backend
 
-Initial backend work is focused on scraping Columbia College course and section data from the public Bulletin pages.
+Initial backend work is focused on scraping Columbia course and section data from the public Bulletin pages.
 
 ## Columbia College Bulletin Scraper
 
@@ -12,12 +12,18 @@ https://bulletin.columbia.edu/columbia-college/departments-instruction/
 
 It avoids Bulletin search paths because `robots.txt` disallows `/search/` routes. Instead, it follows the department and program pages linked from the seed page and parses CourseLeaf `div.courseblock` entries in each Courses tab.
 
-Captured fields include:
+The scraper writes the schedule-planner JSON shape directly. Each top-level array item is one scheduled section/call number and contains:
 
-- department name, slug, and source URL
-- course code, subject, catalog number, title, and credits
-- description, prerequisites, and corequisites when available
-- scheduled sections embedded in the Bulletin, including term, section/call number, meeting time, location, instructor, points, and enrollment
+- `course_id`
+- `course_code`
+- `name`
+- `section`
+- `credit_hrs`
+- `location`
+- `prof_name`
+- `department`
+- `call number`
+- `days`, `start_time`, and `end_time` when the Bulletin row has a scheduled meeting time
 
 ## Setup
 
@@ -38,16 +44,16 @@ PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --department co
 PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --output backend/data/columbia_college_courses.json --pretty
 ```
 
-## Run a Flattened Fall 2026 Section Export
+## Run a Fall 2026 Section Export
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --term "Fall 2026" --flat-sections --clean --output backend/data/fall_2026_courses_flat.json --pretty
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --term "Fall 2026" --output backend/data/fall_2026_courses_flat.json --pretty
 ```
 
 For the Columbia Engineering/SEAS Bulletin:
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --seed-url https://bulletin.columbia.edu/columbia-engineering/academic-departments-programs/ --term "Fall 2026" --flat-sections --clean --output backend/data/seas_fall_2026_courses_flat.json --pretty
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --seed-url https://bulletin.columbia.edu/columbia-engineering/academic-departments-programs/ --term "Fall 2026" --output backend/data/seas_fall_2026_courses_flat.json --pretty
 ```
 
 Merge the Columbia College and SEAS clean exports into one deduplicated Fall 2026 file:
@@ -56,11 +62,7 @@ Merge the Columbia College and SEAS clean exports into one deduplicated Fall 202
 .venv/bin/python backend/scripts/merge_clean_course_exports.py backend/data/fall_2026_courses_flat.json backend/data/seas_fall_2026_courses_flat.json --output backend/data/fall_2026_all_courses_flat.json --pretty
 ```
 
-The clean flattened export writes one top-level JSON array item per scheduled section/call number. Each item contains `course_id`, `course_code`, `name`, `section`, `credit_hrs`, `location`, `prof_name`, `department`, and `call number`. Scheduled entries also include `days`, `start_time`, and `end_time`; unscheduled/TBA entries omit those time fields.
-
-Run without `--clean` if you need the detailed flattened output with scrape metadata and cross-listing details.
-
-If the same call number appears through multiple department pages, the exporter keeps one top-level entry and records those catalog appearances in `catalog_course_refs`.
+If the same call number appears through multiple department pages, the scraper keeps the first row and skips the duplicate. The old `--flat-sections` and `--clean` flags are still accepted for backwards compatibility, but clean rows are now always written directly.
 
 The full crawl requests each department page once and waits briefly between department requests by default.
 
@@ -74,6 +76,6 @@ The CULPA scraper uses public JSON endpoints and stores rating summaries only. I
 PYTHONPATH=backend .venv/bin/python -m scraper.culpa --course-input backend/data/fall_2026_all_courses_flat.json --output-db backend/data/culpa_professor_ratings.sqlite --output-json backend/data/culpa_professor_ratings.json --pretty
 ```
 
-The SQLite database contains `professors`, `departments`, `professor_departments`, and `unmatched_course_professors` tables.
+The SQLite database contains `professors`, `departments`, `professor_departments`, `professor_reviews`, `professor_course_rating_summaries`, and `unmatched_course_professors` tables. The `professor_reviews` table stores ratings and review metadata only, not review text.
 
 Note: the Bulletin data is useful for catalog courses and the embedded section snapshots it exposes. If we later need authoritative live registration state, the next scraper should target Columbia's Directory of Classes or Vergil APIs separately.
