@@ -1,18 +1,139 @@
 # Schedule Planner Backend
 
-The backend has two pieces right now: a Flask JSON API for schedule combinations and scrapers for building the Columbia course dataset.
+This backend currently has two jobs:
 
-## Columbia College Bulletin Scraper
+- Serve a Flask API and browser visualizer for testing schedule combinations.
+- Build the Columbia Fall 2026 course dataset from Bulletin pages.
 
-The scraper starts at:
+## 1. Flask Server And Visualizer Test
 
-```text
-https://bulletin.columbia.edu/columbia-college/departments-instruction/
+Use this section if you just want to run the backend and test schedules locally.
+
+### Setup
+
+From the project root:
+
+```bash
+python3 -m venv .venv
+.venv/bin/pip install -r backend/requirements.txt
 ```
 
-It avoids Bulletin search paths because `robots.txt` disallows `/search/` routes. Instead, it follows the department and program pages linked from the seed page and parses CourseLeaf `div.courseblock` entries in each Courses tab.
+### Start The Server
 
-The scraper writes the schedule-planner JSON shape directly. Each top-level array item is one scheduled section/call number and contains:
+From the project root:
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m app
+```
+
+Or, if your virtual environment is already active and you are inside `backend/`:
+
+```bash
+python -m app
+```
+
+The server runs at:
+
+```text
+http://127.0.0.1:5001
+```
+
+Health checks:
+
+```bash
+curl http://127.0.0.1:5001/health
+curl http://127.0.0.1:5001/api/health
+```
+
+### Open The Visualizer
+
+Open this URL in your browser:
+
+```text
+http://127.0.0.1:5001/api/schedules/visualizer
+```
+
+The visualizer is a test UI for the real API endpoint. It calls `POST /api/schedules/combinations` from browser JavaScript, then renders the returned combinations as schedule blocks.
+
+In the visualizer, enter exact course codes from the JSON data, one per line:
+
+```text
+AFAS UN1001
+AMST UN3930
+ANTH UN1002
+```
+
+Optional inputs:
+
+- `Take exactly`: choose exactly Y courses from the X course codes entered.
+- `No class before`: filter out sections starting before a time such as `10am`.
+- `No class after`: filter out sections ending after a time such as `5pm`.
+
+Every visualized combination uses the same standard time table so schedules are easy to compare. Unscheduled/TBA sections are included and treated as non-conflicting.
+
+### Use The JSON API Directly
+
+Generate non-conflicting schedule combinations:
+
+```bash
+curl -X POST http://127.0.0.1:5001/api/schedules/combinations \
+  -H "Content-Type: application/json" \
+  -d '{"course_numbers":["AFAS UN1001","AMST UN3930","ANTH UN1002"],"target_course_count":2,"requirements":{"no_class_before":"10am","no_class_after":"5pm"},"limit":3,"include_ascii":true}'
+```
+
+Request fields:
+
+- `course_numbers`: exact course codes to consider, maximum 10.
+- `target_course_count`: optional; choose exactly this many courses from the requested list. If omitted, all requested courses are used.
+- `requirements.no_class_before`: optional time string such as `10am` or `10:30am`.
+- `requirements.no_class_after`: optional time string such as `5pm` or `5:30pm`.
+- `limit`: optional; limits how many combinations are returned, while still counting all valid combinations.
+- `include_ascii`: optional; includes a compact text preview.
+
+Response summary fields:
+
+- `total_valid_combinations`
+- `returned_combinations`
+- `target_course_count`
+- `requirements`
+- `missing_course_numbers`
+- `combinations`
+
+Each returned section is intentionally compact:
+
+```json
+{
+  "course_code": "AFAS UN1001",
+  "section": "001",
+  "days": ["M", "W"],
+  "start_time": "2:40pm",
+  "end_time": "3:55pm",
+  "call_number": "12140"
+}
+```
+
+### Preview In The Terminal
+
+```bash
+PYTHONPATH=backend .venv/bin/python backend/scripts/preview_schedule_combinations.py \
+  "AFAS UN1001" "AMST UN3930" "ANTH UN1002" --take-exactly 2 --limit 3
+```
+
+## 2. Course Data And Scraper
+
+The current app data file is:
+
+```text
+backend/data/fall_2026_all_courses_flat.json
+```
+
+This is the only generated course data file we keep in the repo right now. It is a merged Columbia College + SEAS Fall 2026 export.
+
+### Clean Scraper Approach
+
+The Bulletin scraper now writes the app's final JSON shape directly. Earlier versions scraped richer nested course data and then flattened it later. We removed that extra step because the app only needs one row per scheduled section/call number.
+
+Each top-level JSON item is one section/call number and contains:
 
 - `course_id`
 - `course_code`
@@ -23,104 +144,69 @@ The scraper writes the schedule-planner JSON shape directly. Each top-level arra
 - `prof_name`
 - `department`
 - `call number`
-- `days`, `start_time`, and `end_time` when the Bulletin row has a scheduled meeting time
+- `days`, `start_time`, and `end_time` only when the Bulletin row has a scheduled meeting time
 
-## Setup
+There is no nested course wrapper and no legacy combined `time` field. Unscheduled/TBA rows simply omit the meeting-time fields.
 
-```bash
-python3 -m venv .venv
-.venv/bin/pip install -r backend/requirements.txt
-```
+### Columbia College Bulletin Scraper
 
-## Run the Flask API
-
-```bash
-PYTHONPATH=backend .venv/bin/python -m app
-```
-
-The root URL also returns a small API index:
-
-```bash
-curl http://127.0.0.1:5001/
-```
-
-Health check:
-
-```bash
-curl http://127.0.0.1:5001/health
-curl http://127.0.0.1:5001/api/health
-```
-
-Generate non-conflicting schedule combinations for up to 10 course numbers:
-
-```bash
-curl -X POST http://127.0.0.1:5001/api/schedules/combinations \
-	-H "Content-Type: application/json" \
-	-d '{"course_numbers":["COMS W3137","COMS W3157","MATH UN1101"],"target_course_count":2,"requirements":{"no_class_before":"10am","no_class_after":"5pm"},"limit":3,"include_ascii":true}'
-```
-
-The endpoint returns `total_valid_combinations` for all possible valid schedules and only includes the first `limit` combinations in the response when `limit` is provided. Optional `target_course_count` tells the generator to choose exactly that many courses from the requested course list. Optional requirements currently support `no_class_before` and `no_class_after` time strings such as `10am` or `5:30pm`. Each returned section is compact: `course_code`, `section`, `days`, `start_time`, `end_time`, and `call_number`.
-
-Open the browser test UI:
+The Columbia College seed URL is:
 
 ```text
-http://127.0.0.1:5001/api/schedules/visualizer
+https://bulletin.columbia.edu/columbia-college/departments-instruction/
 ```
 
-It uses exact course codes, optional exact-course-count and no-class-before/after requirements, calls `POST /api/schedules/combinations` from the browser, and renders every returned combination as a day/time schedule with blocks.
+The scraper avoids Bulletin `/search/` paths because `robots.txt` disallows them. Instead, it follows department/program links from the seed page and parses CourseLeaf `div.courseblock` entries and schedule tables on department pages.
 
-## Preview Schedules in the Terminal
+Run a small smoke test:
 
 ```bash
-PYTHONPATH=backend .venv/bin/python backend/scripts/preview_schedule_combinations.py "COMS W3137" "COMS W3157" "MATH UN1101" --take-exactly 2 --limit 3
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin \
+  --department computer-science \
+  --output backend/data/sample_courses.json \
+  --pretty
 ```
 
-Unscheduled/TBA sections are included in combinations and treated as non-conflicting for now.
-
-## Run a Smoke Test
+Run a Fall 2026 Columbia College export:
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --department computer-science --output backend/data/sample_courses.json --pretty
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin \
+  --term "Fall 2026" \
+  --output backend/data/fall_2026_courses_flat.json \
+  --pretty
 ```
 
-## Run the Full Columbia College Crawl
+### SEAS Export
+
+Use the same scraper with the SEAS seed URL:
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --output backend/data/columbia_college_courses.json --pretty 
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin \
+  --seed-url https://bulletin.columbia.edu/columbia-engineering/academic-departments-programs/ \
+  --term "Fall 2026" \
+  --output backend/data/seas_fall_2026_courses_flat.json \
+  --pretty
 ```
 
-## Run a Fall 2026 Section Export
+### Merge College And SEAS
+
+Merge the clean exports into the single app data file:
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --term "Fall 2026" --output backend/data/fall_2026_courses_flat.json --pretty
+.venv/bin/python backend/scripts/merge_clean_course_exports.py \
+  backend/data/fall_2026_courses_flat.json \
+  backend/data/seas_fall_2026_courses_flat.json \
+  --output backend/data/fall_2026_all_courses_flat.json \
+  --pretty
 ```
 
-For the Columbia Engineering/SEAS Bulletin:
+The merge script deduplicates by `call number` and renumbers `course_id` sequentially. If the same call number appears through multiple department pages, the first row is kept and later duplicates are skipped.
 
-```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --seed-url https://bulletin.columbia.edu/columbia-engineering/academic-departments-programs/ --term "Fall 2026" --output backend/data/seas_fall_2026_courses_flat.json --pretty
-```
+### Scraper Notes
 
-Merge the Columbia College and SEAS clean exports into one deduplicated Fall 2026 file:
+- The old `--flat-sections` and `--clean` flags are still accepted for backwards compatibility, but clean rows are always written directly now.
+- The full crawl requests each department page once and waits briefly between requests by default.
+- Transient request failures are retried with exponential backoff.
+- You can adjust crawl behavior with `--delay` and `--retries`.
 
-```bash
-.venv/bin/python backend/scripts/merge_clean_course_exports.py backend/data/fall_2026_courses_flat.json backend/data/seas_fall_2026_courses_flat.json --output backend/data/fall_2026_all_courses_flat.json --pretty
-```
-
-If the same call number appears through multiple department pages, the scraper keeps the first row and skips the duplicate. The old `--flat-sections` and `--clean` flags are still accepted for backwards compatibility, but clean rows are now always written directly.
-
-The full crawl requests each department page once and waits briefly between department requests by default.
-
-The scraper also retries transient request failures with exponential backoff. You can adjust the request delay or retry count with `--delay` and `--retries`.
-
-## CULPA Professor Ratings
-
-The CULPA scraper uses public JSON endpoints and stores rating summaries only. It does not store review comments.
-
-```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.culpa --course-input backend/data/fall_2026_all_courses_flat.json --output-db backend/data/culpa_professor_ratings.sqlite --output-json backend/data/culpa_professor_ratings.json --pretty
-```
-
-The SQLite database contains `professors`, `departments`, `professor_departments`, `professor_reviews`, `professor_course_rating_summaries`, and `unmatched_course_professors` tables. The `professor_reviews` table stores ratings and review metadata only, not review text.
-
-Note: the Bulletin data is useful for catalog courses and the embedded section snapshots it exposes. If we later need authoritative live registration state, the next scraper should target Columbia's Directory of Classes or Vergil APIs separately.
+Note: Bulletin data is useful for catalog courses and the embedded section snapshots it exposes. If we later need authoritative live registration state, the next scraper should target Columbia's Directory of Classes or Vergil APIs separately.
