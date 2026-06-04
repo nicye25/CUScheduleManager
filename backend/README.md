@@ -86,7 +86,7 @@ PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --department co
 ## Run the Full Columbia College Crawl
 
 ```bash
-PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --output backend/data/columbia_college_courses.json --pretty
+PYTHONPATH=backend .venv/bin/python -m scraper.columbia_bulletin --output backend/data/columbia_college_courses.json --pretty 
 ```
 
 ## Run a Fall 2026 Section Export
