@@ -5768,7 +5768,7 @@
   {
     "course_id": 361,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "PARALLEL FUNCTIONAL PROGR",
     "section": "001",
     "credit_hrs": 3.0,
     "days": [
@@ -5785,7 +5785,7 @@
   {
     "course_id": 362,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "DESIGN USING C++",
     "section": "002",
     "credit_hrs": 3.0,
     "days": [
@@ -5801,7 +5801,7 @@
   {
     "course_id": 363,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "RESILIENT QUANTUM COMP",
     "section": "003",
     "credit_hrs": 3.0,
     "days": [
@@ -5818,7 +5818,7 @@
   {
     "course_id": 364,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "ADV SFTWR DEVELOP W/ AI",
     "section": "004",
     "credit_hrs": 3.0,
     "days": [
@@ -5834,7 +5834,7 @@
   {
     "course_id": 365,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "HACKING 4 DEFENSE",
     "section": "005",
     "credit_hrs": 3.0,
     "days": [
@@ -5850,7 +5850,7 @@
   {
     "course_id": 366,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "INNOVATION & DESIGN LAB",
     "section": "006",
     "credit_hrs": 3.0,
     "days": [
@@ -5866,7 +5866,7 @@
   {
     "course_id": 367,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "COMPETITIVE PROGRAMMING",
     "section": "007",
     "credit_hrs": 3.0,
     "days": [
@@ -5882,7 +5882,7 @@
   {
     "course_id": 368,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "HEALTH DATA MGMT AGENTS",
     "section": "008",
     "credit_hrs": 3.0,
     "days": [
@@ -5899,7 +5899,7 @@
   {
     "course_id": 369,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "AGENIC ENGINEERING",
     "section": "009",
     "credit_hrs": 3.0,
     "days": [
@@ -5915,7 +5915,7 @@
   {
     "course_id": 370,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "DEEP LRNG FOR COMP VISION",
     "section": "010",
     "credit_hrs": 3.0,
     "days": [
@@ -5932,7 +5932,7 @@
   {
     "course_id": 371,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "C++ DEEP DIVE FOR C PRGS",
     "section": "011",
     "credit_hrs": 3.0,
     "days": [
@@ -5949,7 +5949,7 @@
   {
     "course_id": 372,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "LAB2MKT QUANTUM AI INNOVA",
     "section": "012",
     "credit_hrs": 3.0,
     "days": [
@@ -5965,7 +5965,7 @@
   {
     "course_id": 373,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "CASL MLTPLAYER GAME OCAML",
     "section": "013",
     "credit_hrs": 3.0,
     "days": [
@@ -5981,7 +5981,7 @@
   {
     "course_id": 374,
     "course_code": "COMS W4995",
-    "name": "TOPICS IN COMPUTER SCIENCE",
+    "name": "APPLIED MACHINE LEARNING",
     "section": "030",
     "credit_hrs": 3.0,
     "days": [
