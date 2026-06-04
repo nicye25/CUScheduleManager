@@ -1,6 +1,6 @@
 # Schedule Planner Backend
 
-Initial backend work is focused on scraping Columbia course and section data from the public Bulletin pages.
+The backend has two pieces right now: a Flask JSON API for schedule combinations and scrapers for building the Columbia course dataset.
 
 ## Columbia College Bulletin Scraper
 
@@ -31,6 +31,51 @@ The scraper writes the schedule-planner JSON shape directly. Each top-level arra
 python3 -m venv .venv
 .venv/bin/pip install -r backend/requirements.txt
 ```
+
+## Run the Flask API
+
+```bash
+PYTHONPATH=backend .venv/bin/python -m app
+```
+
+The root URL also returns a small API index:
+
+```bash
+curl http://127.0.0.1:5001/
+```
+
+Health check:
+
+```bash
+curl http://127.0.0.1:5001/health
+curl http://127.0.0.1:5001/api/health
+```
+
+Generate non-conflicting schedule combinations for up to 10 course numbers:
+
+```bash
+curl -X POST http://127.0.0.1:5001/api/schedules/combinations \
+	-H "Content-Type: application/json" \
+	-d '{"course_numbers":["COMS W3137","COMS W3157"],"limit":3,"include_ascii":true}'
+```
+
+The endpoint returns `total_valid_combinations` for all possible valid schedules and only includes the first `limit` combinations in the response when `limit` is provided. Each returned section is compact: `course_code`, `section`, `days`, `start_time`, `end_time`, and `call_number`.
+
+Open the browser test UI:
+
+```text
+http://127.0.0.1:5001/api/schedules/visualizer
+```
+
+It uses exact course codes, calls `POST /api/schedules/combinations` from the browser, and renders every returned combination as a day/time schedule with blocks.
+
+## Preview Schedules in the Terminal
+
+```bash
+PYTHONPATH=backend .venv/bin/python backend/scripts/preview_schedule_combinations.py "COMS W3137" "COMS W3157" --limit 3
+```
+
+Unscheduled/TBA sections are included in combinations and treated as non-conflicting for now.
 
 ## Run a Smoke Test
 
