@@ -1,10 +1,13 @@
 import { StrictMode } from 'react'
 import { createRoot } from 'react-dom/client'
+import { ScheduleProvider } from '@/context/ScheduleContext'
+import App from './App'
 import './index.css'
-import App from './App.jsx'
 
 createRoot(document.getElementById('root')).render(
   <StrictMode>
-    <App />
-  </StrictMode>,
+    <ScheduleProvider>
+      <App />
+    </ScheduleProvider>
+  </StrictMode>
 )
