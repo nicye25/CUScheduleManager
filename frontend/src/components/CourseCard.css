@@ -28,7 +28,7 @@
     color: #003865;
 }
 
-.course-card__daytime {
+.course-card__sections {
     display: flex;
     align-items: center;
     gap: 4px;
@@ -37,7 +37,7 @@
     color: #003865;
 }
 
-.course-card__daytime-dot {
+.course-card__sections-dot {
     width: 12px;
     height: 12px;
     border-radius: 3px;

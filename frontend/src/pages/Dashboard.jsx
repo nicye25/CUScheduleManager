@@ -13,53 +13,44 @@ function SectionDivider({ label }) {
 }
 
 function CourseList({ grouped }) {
-    return (
-        <div className="dashboard__scroll-section">
-            {Object.entries(grouped).map(([code, course]) =>
-                course.sections.map((section) => (
-                    <CourseCard
-                        key={`${code}-${section.section_id}`}
-                        code={code}
-                        name={course.name}
-                        days={section.days}
-                        start_time={section.start_time}
-                        end_time={section.end_time}
-                        prof_name={section.prof_name}
-                        section_id={section.section_id}
-                    />
-                ))
-            )}
-        </div>
-    )
+  return (
+    <div className="dashboard__scroll-section">
+      {Object.entries(grouped).map(([code, course]) => (
+        <CourseCard
+          key={code}
+          code={code}
+          name={course.name}
+          sections={course.sections}
+        />
+      ))}
+    </div>
+  )
 }
 
 function SelectedList({ grouped, selectedSections }) {
-    return (
-        <div className="dashboard__scroll-section">
-            {selectedSections.length === 0
-                ? <p className="dashboard__empty">No courses added yet.</p>
-                : selectedSections.map(({ code, section_id }) => {
-                    const course = grouped[code]
-                    if (!course) return null
-                    const section = course.sections.find(s => s.section_id === section_id)
-                    if (!section) return null
-                    return (
-                        <CourseCard
-                            key={`selected-${code}-${section_id}`}
-                            code={code}
-                            name={course.name}
-                            days={section.days}
-                            start_time={section.start_time}
-                            end_time={section.end_time}
-                            prof_name={section.prof_name}
-                            section_id={section_id}
-                        />
-                    )
-                })
-            }
-        </div>
-    )
+  const selectedCodes = [...new Set(selectedSections.map(s => s.code))]
+
+  return (
+    <div className="dashboard__scroll-section">
+      {selectedCodes.length === 0
+        ? <p className="dashboard__empty">No courses added yet.</p>
+        : selectedCodes.map(code => {
+            const course = grouped[code]
+            if (!course) return null
+            return (
+              <CourseCard
+                key={`selected-${code}`}
+                code={code}
+                name={course.name}
+                sections={course.sections}
+              />
+            )
+          })
+      }
+    </div>
+  )
 }
+
 
 function Dashboard() {
     const { grouped } = useCourses()
@@ -88,11 +79,11 @@ function Dashboard() {
                 />
             </div>
 
-            {combinations.length > 0 && (
+            {/* {combinations.length > 0 && (
                 <pre className="dashboard__debug">
                     {JSON.stringify(combinations[0], null, 2)}
                 </pre>
-            )}
+            )} */}
 
         </div>
     )
