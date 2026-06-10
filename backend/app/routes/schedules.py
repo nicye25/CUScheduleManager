@@ -2,7 +2,6 @@ from __future__ import annotations
 
 from flask import Blueprint, jsonify, render_template_string, request
 
-from app.services.ascii_schedule import format_combinations_ascii
 from app.services.course_catalog import load_course_rows
 from app.services.schedule_generator import (
     MAX_COURSES,
