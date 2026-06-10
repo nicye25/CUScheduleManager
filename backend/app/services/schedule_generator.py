@@ -256,6 +256,8 @@ def serialize_combination(combination_id: int, sections: list[dict[str, object]]
 def serialize_section(section: dict[str, object]) -> dict[str, object]:
     return {
         "course_code": section.get("course_code"),
+        "prof_name": section.get("prof_name"),
+        "location": section.get("location"),
         "section": section.get("section"),
         "days": section.get("days", []),
         "start_time": section.get("start_time"),
