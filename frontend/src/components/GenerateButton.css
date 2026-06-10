@@ -1,0 +1,25 @@
+.generate-btn {
+    font-weight: 400;
+    font-size: 13px;
+    text-align: center;
+    width: 223px;
+    height: 31px;
+    background: #B9D9EB;
+    border-radius: 18px;
+    margin: 0 auto;
+    margin-bottom: 10px;
+    border-width: 0px
+}
+
+.generate-btn:hover:not(:disabled) {
+    background: #98b3c2
+}
+
+.generate-btn:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+.generate-btn--loading {
+  opacity: 0.75;
+}

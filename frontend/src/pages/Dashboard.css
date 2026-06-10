@@ -1,0 +1,83 @@
+.dashboard__sidebar {
+  display: flex;
+  flex-direction: column;
+  height: 100vh;        /* full viewport height */
+  width: 285px;         /* match your Figma sidebar width */
+  border-right: 1px solid #e5e7eb;
+  overflow: hidden;     /* prevent the sidebar itself from scrolling */
+}
+
+.dashboard__panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;              /* each panel takes equal half of the sidebar */
+  min-height: 0;        /* critical — allows flex children to shrink and scroll */
+  overflow: hidden;
+}
+
+.dashboard__scroll-section {
+  display: flex;
+  flex-direction: column;
+  gap: 10px;
+  padding: 10px 12px;
+  overflow-y: auto;     /* each section scrolls independently */
+  flex: 1;
+  min-height: 0;        /* critical — same reason as above */
+}
+
+.dashboard__divider {
+  text-align: center;
+  font-size: 0.875rem;
+  font-weight: 600;
+  color: #374151;
+  border: 1px solid #e5e7eb;
+  border-radius: 999px;
+  padding: 4px 16px;
+  margin: 8px 12px;
+  flex-shrink: 0;       /* divider never shrinks, only the scroll area does */
+}
+
+.dashboard__empty {
+  text-align: center;
+  font-size: 0.8rem;
+  color: #9ca3af;
+  padding: 16px 0;
+}
+
+.dashboard__footer {
+  padding: 10px 12px;
+  flex-shrink: 0;
+  border-top: 1px solid #e5e7eb;
+  display: flex;
+  flex-direction: column;
+  gap: 6px;
+}
+
+.dashboard__error {
+  font-size: 0.75rem;
+  color: #ef4444;
+  text-align: center;
+}
+
+.dashboard__debug {
+  font-size: 0.65rem;
+  background: #f3f4f6;
+  padding: 8px;
+  overflow-x: auto;
+  white-space: pre-wrap;
+  border-top: 1px solid #e5e7eb;
+}
+
+/* custom scrollbar styling */
+.dashboard__scroll-section::-webkit-scrollbar {
+  width: 4px;
+}
+
+.dashboard__scroll-section::-webkit-scrollbar-thumb {
+  background-color: #d1d5db;
+  border-radius: 999px;
+}
+
+.dashboard__scroll-section::-webkit-scrollbar-track {
+  background: transparent;
+}
