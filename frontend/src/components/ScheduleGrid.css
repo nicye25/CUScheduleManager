@@ -1,0 +1,219 @@
+/* ─── Layout ──────────────────────────────────────────────────────────────── */
+
+.schedule-grid {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  height: 100%;
+  overflow: hidden;
+  font-family: 'Inter', sans-serif;
+  background-color: #ffffff;
+}
+
+/* ─── Day Headers ─────────────────────────────────────────────────────────── */
+
+.schedule-grid__header {
+  display: flex;
+  flex-shrink: 0;
+  border-bottom: 1px solid #e5e7eb;
+  padding: 10px 0 8px;
+}
+
+.schedule-grid__header-offset {
+  /* matches width of time label column */
+  width: 56px;
+  flex-shrink: 0;
+}
+
+.schedule-grid__header-day {
+  flex: 1;
+  text-align: center;
+  font-size: 0.8rem;
+  font-weight: 600;
+  color: #6b7280;
+  letter-spacing: 0.03em;
+  text-transform: uppercase;
+}
+
+/* ─── Navigation ──────────────────────────────────────────────────────────── */
+
+.schedule-grid__nav {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 6px 16px;
+  border-bottom: 1px solid #e5e7eb;
+  flex-shrink: 0;
+}
+
+.schedule-grid__nav-label {
+  font-size: 0.8rem;
+  font-weight: 500;
+  color: #374151;
+}
+
+.schedule-grid__nav-btns {
+  display: flex;
+  gap: 6px;
+}
+
+.schedule-grid__nav-btn {
+  width: 28px;
+  height: 28px;
+  border-radius: 6px;
+  border: 1px solid #d1d5db;
+  background: white;
+  color: #374151;
+  font-size: 1rem;
+  cursor: pointer;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  transition: background-color 0.15s ease, border-color 0.15s ease;
+}
+
+.schedule-grid__nav-btn:hover:not(:disabled) {
+  background-color: #f3f4f6;
+  border-color: #9ca3af;
+}
+
+.schedule-grid__nav-btn:disabled {
+  opacity: 0.35;
+  cursor: not-allowed;
+}
+
+/* ─── Grid Body ───────────────────────────────────────────────────────────── */
+
+.schedule-grid__body {
+  display: flex;
+  flex: 1;
+  overflow-y: auto;
+  overflow-x: hidden;
+  position: relative;
+  padding-top: 8px;
+}
+
+/* ─── Time Labels ─────────────────────────────────────────────────────────── */
+
+.schedule-grid__time-col {
+  width: 56px;
+  flex-shrink: 0;
+  position: relative;
+}
+
+.schedule-grid__time-label {
+  position: absolute;
+  right: 8px;
+  font-size: 0.7rem;
+  color: #9ca3af;
+  font-weight: 500;
+  transform: translateY(-50%);
+  white-space: nowrap;
+  user-select: none;
+}
+
+/* ─── Day Columns ─────────────────────────────────────────────────────────── */
+
+.schedule-grid__columns {
+  display: flex;
+  flex: 1;
+  position: relative;
+}
+
+.schedule-grid__day-col {
+  flex: 1;
+  position: relative;
+  border-left: 1px solid #f3f4f6;
+}
+
+.schedule-grid__day-col:first-child {
+  border-left: none;
+}
+
+/* ─── Hour Lines ──────────────────────────────────────────────────────────── */
+
+.schedule-grid__hour-line {
+  position: absolute;
+  left: 0;
+  right: 0;
+  height: 1px;
+  background-color: #f3f4f6;
+  pointer-events: none;
+}
+
+/* ─── Course Blocks ───────────────────────────────────────────────────────── */
+
+.schedule-grid__block {
+  position: absolute;
+  left: 3px;
+  right: 3px;
+  border-radius: 6px;
+  padding: 4px 6px;
+  display: flex;
+  flex-direction: column;
+  gap: 1px;
+  overflow: hidden;
+  cursor: default;
+  transition: filter 0.15s ease;
+  /* color, bg, borderLeft set inline for per-course theming */
+}
+
+.schedule-grid__block:hover {
+  filter: brightness(0.95);
+}
+
+.schedule-grid__block-code {
+  font-size: 0.72rem;
+  font-weight: 700;
+  line-height: 1.2;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-grid__block-time {
+  font-size: 0.65rem;
+  font-weight: 400;
+  opacity: 0.85;
+  white-space: nowrap;
+}
+
+.schedule-grid__block-section {
+  font-size: 0.62rem;
+  opacity: 0.7;
+}
+
+.schedule-grid__block-prof {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+.schedule-grid__block-location {
+  font-size: 0.65rem;
+  opacity: 0.85;
+  white-space: nowrap;
+  overflow: hidden;
+  text-overflow: ellipsis;
+}
+
+/* ─── Empty State ─────────────────────────────────────────────────────────── */
+
+.schedule-grid__empty {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  pointer-events: none;
+}
+
+.schedule-grid__empty p {
+  font-size: 0.85rem;
+  color: #9ca3af;
+  text-align: center;
+  max-width: 200px;
+  line-height: 1.5;
+}
