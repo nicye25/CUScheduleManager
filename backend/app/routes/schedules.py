@@ -23,7 +23,6 @@ def schedule_combinations():
     payload = request.get_json(silent=True) or {}
     course_numbers = payload.get("course_numbers", payload.get("course_codes"))
     limit = payload.get("limit")
-    include_ascii = bool(payload.get("include_ascii", False))
     requirements = extract_requirements(payload)
     target_course_count = extract_target_course_count(payload)
 
@@ -39,9 +38,6 @@ def schedule_combinations():
         )
     except (ScheduleGenerationError, ValueError) as error:
         return jsonify({"error": str(error)}), 400
-
-    if include_ascii:
-        result["ascii"] = format_combinations_ascii(result["combinations"])
 
     return jsonify(result), 200
 
