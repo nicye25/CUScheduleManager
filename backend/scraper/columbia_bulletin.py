@@ -433,8 +433,6 @@ def parse_args(argv: Iterable[str] | None = None) -> argparse.Namespace:
     parser.add_argument("--delay", type=float, default=0.25, help="Seconds to wait between department requests.")
     parser.add_argument("--retries", type=int, default=3, help="Retry count for transient request failures.")
     parser.add_argument("--term", help='Limit sections to a term, such as "Fall 2026".')
-    parser.add_argument("--flat-sections", action="store_true", help="Deprecated; clean section rows are always written.")
-    parser.add_argument("--clean", action="store_true", help="Deprecated; clean section rows are always written.")
     parser.add_argument("--output", type=Path, default=Path("backend/data/columbia_college_courses.json"))
     parser.add_argument("--pretty", action="store_true", help="Pretty-print JSON output.")
     return parser.parse_args(argv)

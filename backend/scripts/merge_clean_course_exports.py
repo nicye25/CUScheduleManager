@@ -10,6 +10,9 @@ def load_course_entries(path: Path) -> list[dict[str, object]]:
     data = json.loads(path.read_text(encoding="utf-8"))
     if not isinstance(data, list):
         raise ValueError(f"Expected {path} to contain a JSON array")
+    for entry in data:
+        if not isinstance(entry, dict):
+            raise ValueError(f"Expected every entry in {path} to be an object: {entry}")
     return data
 
 

@@ -204,7 +204,6 @@ The merge script deduplicates by `call number` and renumbers `course_id` sequent
 
 ### Scraper Notes
 
-- The old `--flat-sections` and `--clean` flags are still accepted for backwards compatibility, but clean rows are always written directly now.
 - The full crawl requests each department page once and waits briefly between requests by default.
 - Transient request failures are retried with exponential backoff.
 - You can adjust crawl behavior with `--delay` and `--retries`.
