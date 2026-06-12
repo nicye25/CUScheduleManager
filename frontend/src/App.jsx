@@ -1,13 +1,16 @@
 import { useState } from 'react'
-import './App.css'
+import Dashboard from '@/pages/Dashboard'
+import { useCourses } from '@/hooks/useCourses'
+import ScheduleGrid from '@/components/ScheduleGrid'
 
 function App() {
   const [count, setCount] = useState(0)
+  const { grouped, flat } = useCourses()
 
   return (
-    <>
-      <h1>CU Schedule Manager</h1>
-    </>
+   <div>
+    <Dashboard />
+   </div>
   )
 }
 
