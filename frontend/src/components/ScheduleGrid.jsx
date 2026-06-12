@@ -207,16 +207,6 @@ function ScheduleGrid() {
         ))}
       </div>
 
-      {/* Navigation */}
-      {hasCombinations && (
-        <CombinationNav
-          index={activeCombinationIndex}
-          total={combinations.length}
-          onPrev={() => setActiveCombinationIndex(i => Math.max(0, i - 1))}
-          onNext={() => setActiveCombinationIndex(i => Math.min(combinations.length - 1, i + 1))}
-        />
-      )}
-
       {/* Grid body */}
       <div className="schedule-grid__body">
         <TimeLabels />
@@ -228,6 +218,16 @@ function ScheduleGrid() {
 
         {!hasCombinations && <EmptyState />}
       </div>
+      
+      {/* Navigation */}
+      {hasCombinations && (
+        <CombinationNav
+          index={activeCombinationIndex}
+          total={combinations.length}
+          onPrev={() => setActiveCombinationIndex(i => Math.max(0, i - 1))}
+          onNext={() => setActiveCombinationIndex(i => Math.min(combinations.length - 1, i + 1))}
+        />
+      )}
 
     </div>
   )

@@ -11,7 +11,7 @@
   flex-direction: column;
   height: 100vh;        /* full viewport height */
   width: 285px;         /* match your Figma sidebar width */
-  border-right: 1px solid #e5e7eb;
+  border-right: 1px solid #B9D9EB;
   overflow: hidden;     /* prevent the sidebar itself from scrolling */
 }
 
@@ -29,6 +29,10 @@
   overflow: hidden;
 }
 
+.dashboard__panel--selected {
+  border-top: 1px solid #B9D9EB
+}
+
 .dashboard__scroll-section {
   display: flex;
   flex-direction: column;
@@ -44,7 +48,8 @@
   font-size: 0.875rem;
   font-weight: 600;
   color: #374151;
-  border: 1px solid #e5e7eb;
+  border: 1px solid #B9D9EB;
+  /* background-color: #FFFFFF; */
   border-radius: 999px;
   padding: 4px 16px;
   margin: 8px 12px;
@@ -61,7 +66,7 @@
 .dashboard__footer {
   padding: 10px 12px;
   flex-shrink: 0;
-  border-top: 1px solid #e5e7eb;
+  border-top: 1px solid #B9D9EB;
   display: flex;
   flex-direction: column;
   gap: 6px;

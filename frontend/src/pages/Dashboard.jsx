@@ -4,6 +4,7 @@ import CourseCard from '@/components/CourseCard'
 import ScheduleGrid from '@/components/ScheduleGrid'
 import { useSchedule } from '@/context/ScheduleContext'
 import GenerateButton from '@/components/GenerateButton'
+import DashboardHeader from '@/components/DashboardHeader'
 
 function SectionDivider({ label }) {
     return (
@@ -67,7 +68,7 @@ function Dashboard() {
                     <CourseList grouped={grouped} />
                 </div>
 
-                <div className="dashboard__panel">
+                <div className="dashboard__panel dashboard__panel--selected">
                     <SectionDivider label="Your Courses" />
                     <SelectedList grouped={grouped} selectedSections={selectedSections} />
                 </div>
@@ -91,7 +92,6 @@ function Dashboard() {
                 <ScheduleGrid />
             </main>
         </div>
-
     )
 }
 

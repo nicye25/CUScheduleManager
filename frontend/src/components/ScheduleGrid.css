@@ -7,7 +7,6 @@
   height: 100%;
   overflow: hidden;
   font-family: 'Inter', sans-serif;
-  background-color: #ffffff;
 }
 
 /* ─── Day Headers ─────────────────────────────────────────────────────────── */
@@ -15,7 +14,7 @@
 .schedule-grid__header {
   display: flex;
   flex-shrink: 0;
-  border-bottom: 1px solid #e5e7eb;
+  border-bottom: 1px solid #B9D9EB;
   padding: 10px 0 8px;
 }
 
@@ -26,13 +25,12 @@
 }
 
 .schedule-grid__header-day {
+  font-weight: 300;
+  font-size: 12px;
+  color: #64748B;
   flex: 1;
   text-align: center;
-  font-size: 0.8rem;
-  font-weight: 600;
-  color: #6b7280;
   letter-spacing: 0.03em;
-  text-transform: uppercase;
 }
 
 /* ─── Navigation ──────────────────────────────────────────────────────────── */
@@ -41,15 +39,16 @@
   display: flex;
   align-items: center;
   justify-content: space-between;
-  padding: 6px 16px;
-  border-bottom: 1px solid #e5e7eb;
+  padding: 11px 16px;
+  /* border-bottom: 1px solid #e5e7eb; */
   flex-shrink: 0;
+  border-top: 1px solid #B9D9EB
 }
 
 .schedule-grid__nav-label {
   font-size: 0.8rem;
-  font-weight: 500;
-  color: #374151;
+  font-weight: 300;
+  color: #64748B;
 }
 
 .schedule-grid__nav-btns {
@@ -87,7 +86,7 @@
 .schedule-grid__body {
   display: flex;
   flex: 1;
-  overflow-y: auto;
+  overflow-y: visible;
   overflow-x: hidden;
   position: relative;
   padding-top: 8px;
@@ -102,14 +101,15 @@
 }
 
 .schedule-grid__time-label {
+  font-weight: 300;
+  font-size: 12px;
   position: absolute;
   right: 8px;
-  font-size: 0.7rem;
-  color: #9ca3af;
-  font-weight: 500;
   transform: translateY(-50%);
   white-space: nowrap;
   user-select: none;
+  color: #64748B;
+
 }
 
 /* ─── Day Columns ─────────────────────────────────────────────────────────── */
@@ -123,7 +123,7 @@
 .schedule-grid__day-col {
   flex: 1;
   position: relative;
-  border-left: 1px solid #f3f4f6;
+  /* border-left: 1px solid #f3f4f6; */
 }
 
 .schedule-grid__day-col:first-child {
@@ -137,7 +137,7 @@
   left: 0;
   right: 0;
   height: 1px;
-  background-color: #f3f4f6;
+  background-color: #D6E8F3;
   pointer-events: none;
 }
 

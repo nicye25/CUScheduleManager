@@ -1,0 +1,5 @@
+.dashboard-header__div {
+    height: 5vh;
+    border-bottom: 1px solid #B9D9EB;
+    overflow: hidden;
+}
