@@ -25,4 +25,8 @@ p {
   overflow: hidden;
 }
 
+:root {
+  --primary-height: 93.5vh;
+}
+
 

@@ -1,5 +1,12 @@
 .dashboard-header__div {
-    height: 5vh;
+    height: calc(100vh - var(--primary-height));
     border-bottom: 1px solid #B9D9EB;
-    overflow: hidden;
+    /* overflow: hidden; */
+    display: flex;
+    flex-direction: row;
+    align-items: center;
+    font-weight: 700;
+    font-size: 20px;
+    color: #003865;
+    padding-left: 12px
 }

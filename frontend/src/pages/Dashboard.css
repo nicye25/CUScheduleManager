@@ -1,7 +1,7 @@
 .dashboard__parent {
   display: flex;
   flex-direction: row;
-  height: 100vh;
+  height: var(--primary-height);
   width: 100vw;
   overflow: hidden;
 }
@@ -9,7 +9,7 @@
 .dashboard__sidebar {
   display: flex;
   flex-direction: column;
-  height: 100vh;        /* full viewport height */
+  height: var(--primary-height);        /* full viewport height */
   width: 285px;         /* match your Figma sidebar width */
   border-right: 1px solid #B9D9EB;
   overflow: hidden;     /* prevent the sidebar itself from scrolling */
@@ -17,7 +17,7 @@
 
 .dashboard__main {
   flex: 1;
-  height: 100vh;
+  height: var(--primary-height);
   overflow: hidden;
 }
 
