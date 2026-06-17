@@ -29,8 +29,25 @@
   overflow: hidden;
 }
 
-.dashboard__panel--selected {
+/* .dashboard__panel--selected {
   border-top: 1px solid #B9D9EB
+} */
+
+.dashboard__resize-handle {
+  height: 6px;
+  cursor: row-resize;
+  flex-shrink: 0;
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="6" viewBox="0 0 20 6"><line x1="4" y1="3" x2="16" y2="3" stroke="%23d1d5db" stroke-width="1"/><line x1="4" y1="1" x2="16" y2="1" stroke="%23d1d5db" stroke-width="1"/><line x1="4" y1="5" x2="16" y2="5" stroke="%23d1d5db" stroke-width="1"/></svg>');
+  background-repeat: no-repeat;
+  background-position: center;
+  border-top: 1px solid #B9D9EB
+}
+
+.dashboard__resize-handle:hover {
+  background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="6" viewBox="0 0 20 6"><line x1="4" y1="3" x2="16" y2="3" stroke="%239ca3af" stroke-width="1"/><line x1="4" y1="1" x2="16" y2="1" stroke="%239ca3af" stroke-width="1"/><line x1="4" y1="5" x2="16" y2="5" stroke="%239ca3af" stroke-width="1"/></svg>');
 }
 
 .dashboard__scroll-section {
@@ -54,6 +71,10 @@
   padding: 4px 16px;
   margin: 8px 12px;
   flex-shrink: 0;       /* divider never shrinks, only the scroll area does */
+}
+
+.dashboard__divider--selected {
+  margin: 2px 12px;
 }
 
 .dashboard__empty {
