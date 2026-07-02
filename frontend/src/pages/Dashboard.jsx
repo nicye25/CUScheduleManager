@@ -1,11 +1,14 @@
 import './Dashboard.css'
+
 import { useState, useRef } from 'react'
 import { useCourses } from '@/hooks/useCourses'
+import { useSchedule } from '@/context/ScheduleContext'
+
 import CourseCard from '@/components/CourseCard'
 import ScheduleGrid from '@/components/ScheduleGrid'
-import { useSchedule } from '@/context/ScheduleContext'
 import GenerateButton from '@/components/GenerateButton'
 import DashboardHeader from '@/components/DashboardHeader'
+import AdvancedOptions from '@/components/AdvancedOptions'
 
 function SectionDivider({ label }) {
     return (
@@ -109,7 +112,6 @@ function Dashboard() {
 
                 <div className="dashboard__panel" style={{ flex: topPanelRatio }}>
                     <div className="dashboard__divider">All Courses</div>
-                    {/* <SectionDivider label="All Courses" /> */}
                     <CourseList grouped={grouped} />
                 </div>
 
@@ -117,11 +119,11 @@ function Dashboard() {
 
                 <div className="dashboard__panel dashboard__panel--selected" style={{ flex: 1 - topPanelRatio }}>
                     <div className="dashboard__divider dashboard__divider--selected">Your Courses</div>
-                    {/* <SectionDivider label="Your Courses" /> */}
                     <SelectedList grouped={grouped} selectedSections={selectedSections} />
                 </div>
 
                 <div className="dashboard__footer">
+                    <AdvancedOptions />
                     {error && <p className="dashboard__error">{error}</p>}
                     <GenerateButton
                         onClick={handleGenerate}
@@ -129,12 +131,6 @@ function Dashboard() {
                         disabled={selectedSections.length === 0}
                     />
                 </div>
-
-                {/* {combinations.length > 0 && (
-                <pre className="dashboard__debug">
-                    {JSON.stringify(combinations[0], null, 2)}
-                </pre>
-            )} */}
             </div>
             <main className="dashboard__main">
                 <ScheduleGrid />

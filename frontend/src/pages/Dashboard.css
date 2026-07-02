@@ -43,7 +43,8 @@
   background-image: url('data:image/svg+xml;utf8,<svg xmlns="http://www.w3.org/2000/svg" width="20" height="6" viewBox="0 0 20 6"><line x1="4" y1="3" x2="16" y2="3" stroke="%23d1d5db" stroke-width="1"/><line x1="4" y1="1" x2="16" y2="1" stroke="%23d1d5db" stroke-width="1"/><line x1="4" y1="5" x2="16" y2="5" stroke="%23d1d5db" stroke-width="1"/></svg>');
   background-repeat: no-repeat;
   background-position: center;
-  border-top: 1px solid #B9D9EB
+  border-top: 1px solid #B9D9EB;
+  padding-top: 3px
 }
 
 .dashboard__resize-handle:hover {

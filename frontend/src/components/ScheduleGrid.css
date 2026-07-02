@@ -51,6 +51,26 @@
   color: #64748B;
 }
 
+.schedule-grid__nav-reqs {
+  width: 30%;
+  display: flex;
+  flex-direction: row;
+  align-items: center;
+  justify-content: space-evenly;
+}
+
+.schedule-grid__nav-exact {
+  font-size: 0.8rem;
+  font-weight: 300;
+  color: #64748B;
+}
+
+.schedule-grid__nav-times {
+  font-size: 0.8rem;
+  font-weight: 300;
+  color: #64748B;
+}
+
 .schedule-grid__nav-btns {
   display: flex;
   gap: 6px;

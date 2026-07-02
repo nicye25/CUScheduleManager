@@ -4,12 +4,17 @@ import { generateSchedule } from '@/services/scheduleService'
 const ScheduleContext = createContext(null)
 
 export function ScheduleProvider({ children }) {
-  const [selectedSections, setSelectedSections] = useState([])
-  const [requirements, setRequirements] = useState({ no_class_before: '', no_class_after: '' })
-  const [combinations, setCombinations] = useState([])
-  const [activeCombinationIndex, setActiveCombinationIndex] = useState(0)
-  const [loading, setLoading] = useState(false)
   const [error, setError] = useState(null)
+  const [loading, setLoading] = useState(false)
+  const [combinations, setCombinations] = useState([])
+  const [selectedSections, setSelectedSections] = useState([])
+  const [targetCourseCount, setTargetCourseCount] = useState('')
+  const [activeCombinationIndex, setActiveCombinationIndex] = useState(0)
+  const [requirements, setRequirements] = useState({ no_class_before: '', no_class_after: '' })
+
+  const [activeRequirements, setActiveRequirements] = useState({})
+  const [activeTargetCourseCount, setActiveTargetCourseCount] = useState(0)
+  const [activeRequestedCourseCount, setActiveRequestedCourseCount] = useState(0)
 
   function addSection(code, section_id) {
     const alreadyAdded = selectedSections.some(s => s.code === code && s.section_id === section_id)
@@ -37,10 +42,16 @@ export function ScheduleProvider({ children }) {
     setCombinations([])
 
     try {
-      const result = await generateSchedule(courseNumbers, requirements)
+      const result = await generateSchedule(courseNumbers, requirements, Number(targetCourseCount) || null)
+      // console.log(Number(targetCourseCount))
+      setActiveTargetCourseCount(result.target_course_count)
+      setActiveRequirements(result.requirements)
+      setActiveRequestedCourseCount(result.requested_course_count)
+      // console.log(result.target_course_count)
+      // console.log(result.requirements)
       setCombinations(result.combinations)
       setActiveCombinationIndex(0)
-      console.log('Schedule result:', result)  // inspect full response
+      // console.log('Schedule result:', result)  // inspect full response
     } catch (err) {
       setError(err.message)
     } finally {
@@ -52,6 +63,11 @@ export function ScheduleProvider({ children }) {
     setSelectedSections([])
     setCombinations([])
     setActiveCombinationIndex(0)
+    setRequirements({ no_class_before: '', no_class_after: '' })
+    setTargetCourseCount('')
+    setActiveTargetCourseCount(0)
+    setActiveRequestedCourseCount(0)
+    setActiveRequirements({ no_class_before: '', no_class_after: '' })
     setError(null)
   }
 
@@ -64,6 +80,11 @@ export function ScheduleProvider({ children }) {
       setCombinations,
       activeCombinationIndex,
       setActiveCombinationIndex,
+      targetCourseCount,
+      setTargetCourseCount,
+      activeTargetCourseCount,
+      activeRequirements,
+      activeRequestedCourseCount,
       loading,
       error,
       addSection,

@@ -148,12 +148,27 @@ function DayColumn({ day, sections, colorMap }) {
   )
 }
 
-function CombinationNav({ index, total, onPrev, onNext }) {
+function CombinationNav({ index, total, onPrev, onNext, requested, exact, requirements }) {
+  const hasBefore = requirements.no_class_before
+  const hasAfter = requirements.no_class_after
+  const hasTimePref = hasBefore || hasAfter
+
   return (
     <div className="schedule-grid__nav">
       <span className="schedule-grid__nav-label">
         Schedule {index + 1} of {total}
       </span>
+      <div className="schedule-grid__nav-reqs">
+        <span className="schedule-grid__nav-exact">
+          Taking {exact} of {requested} classes
+        </span>
+        {hasTimePref && (
+          <span className="schedule-grid__nav-times">
+            {hasBefore && <span>After {requirements.no_class_before}</span>}
+            {hasAfter && <span> & before {requirements.no_class_after}</span>}
+          </span>
+        )}
+      </div>
       <div className="schedule-grid__nav-btns">
         <button
           className="schedule-grid__nav-btn"
@@ -187,7 +202,8 @@ function EmptyState() {
 // ─── Main Component ───────────────────────────────────────────────────────────
 
 function ScheduleGrid() {
-  const { combinations, activeCombinationIndex, setActiveCombinationIndex } = useSchedule()
+  const { combinations, activeCombinationIndex, setActiveCombinationIndex, activeTargetCourseCount,
+    activeRequirements, activeRequestedCourseCount} = useSchedule()
 
   const hasCombinations = combinations.length > 0
   const activeCombination = hasCombinations ? combinations[activeCombinationIndex] : null
@@ -226,6 +242,9 @@ function ScheduleGrid() {
           total={combinations.length}
           onPrev={() => setActiveCombinationIndex(i => Math.max(0, i - 1))}
           onNext={() => setActiveCombinationIndex(i => Math.min(combinations.length - 1, i + 1))}
+          requested={activeRequestedCourseCount}
+          exact={activeTargetCourseCount}
+          requirements={activeRequirements}
         />
       )}
 
